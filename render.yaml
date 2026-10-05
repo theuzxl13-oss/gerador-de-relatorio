@@ -1,13 +1,14 @@
 # Blueprint do Render (https://render.com/docs/blueprint-spec)
-# Cria o serviço web. O banco de dados é externo (Neon – PostgreSQL gratuito
-# que não expira); informe a DATABASE_URL no painel do Render.
+# Cria o serviço web gratuito. O banco de dados é externo (Neon – PostgreSQL
+# gratuito que não expira): informe a DATABASE_URL quando o Render pedir.
 services:
   - type: web
     name: fazenda-da-ilha-ocorrencias
     runtime: node
     plan: free
-    region: oregon
-    buildCommand: npm ci && npm run build
+    # Mesma região do banco Neon recomendado (AWS US East – N. Virginia) para menor latência
+    region: virginia
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/saude
     envVars:
@@ -21,7 +22,8 @@ services:
         sync: false
       - key: APP_SENHA
         sync: false
+      # Produção: começa sem dados de demonstração e sem o botão que apaga tudo
       - key: SEED_DEMO
-        value: "true"
+        value: "false"
       - key: PERMITIR_RESTAURAR_DEMO
-        value: "true"
+        value: "false"

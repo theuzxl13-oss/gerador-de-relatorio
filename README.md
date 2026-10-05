@@ -73,7 +73,7 @@ O PostgreSQL gratuito do Render **expira 30 dias** após a criação, e os relat
 ### 1. Criar o banco no Neon
 
 1. Crie uma conta em **https://neon.tech** (dá para entrar com a conta do GitHub).
-2. Crie um projeto (região sugerida: *AWS São Paulo – sa-east-1*).
+2. Crie um projeto escolhendo a região **AWS US East 1 (N. Virginia)**, a mesma do serviço no Render. Isso deixa o sistema mais rápido.
 3. No painel, clique em **Connect** e copie a *connection string*. Ela tem este formato:
    `postgresql://usuario:senha@ep-xxxx.sa-east-1.aws.neon.tech/neondb?sslmode=require`
 
@@ -91,7 +91,7 @@ As tabelas são criadas **automaticamente** no primeiro acesso ao sistema. Não 
 
 **Opção B – Manual**
 1. **New → Web Service** e selecione o repositório.
-2. Runtime **Node**, Build Command `npm ci && npm run build`, Start Command `npm start`, plano **Free**.
+2. Runtime **Node**, região **Virginia**, Build Command `npm ci --include=dev && npm run build`, Start Command `npm start`, plano **Free**.
 3. Em **Environment**, adicione as variáveis da tabela abaixo.
 
 ### 3. Variáveis de ambiente
