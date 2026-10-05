@@ -1,4 +1,17 @@
-import type { Configuracoes, Norma, Ocorrencia } from "@/lib/types";
+import type { AnexoInfo, Configuracoes, Norma, Ocorrencia } from "@/lib/types";
+
+export interface NovoAnexo {
+  nome: string;
+  tipo: string;
+  largura: number;
+  altura: number;
+  dados: Buffer;
+}
+
+export interface ArquivoAnexo {
+  tipo: string;
+  dados: Buffer;
+}
 
 /** Dados de uma nova ocorrência. Protocolo, id e datas de controle são gerados pelo repositório. */
 export type NovaOcorrencia = Omit<Ocorrencia, "id" | "protocolo" | "criadoEm" | "atualizadoEm">;
@@ -25,6 +38,10 @@ export interface Repositorio {
   excluirOcorrencia(id: string): Promise<void>;
   /** Apaga todas as ocorrências e recria os dados demonstrativos. */
   restaurarDemonstracao(): Promise<void>;
+
+  /** Guarda uma foto ainda não vinculada; o vínculo ocorre ao salvar a ocorrência. */
+  salvarAnexo(anexo: NovoAnexo): Promise<AnexoInfo>;
+  obterAnexo(id: string): Promise<ArquivoAnexo | null>;
 
   obterConfiguracoes(): Promise<Configuracoes>;
   salvarConfiguracoes(cfg: Configuracoes): Promise<Configuracoes>;

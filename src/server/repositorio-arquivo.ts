@@ -4,13 +4,24 @@ import path from "node:path";
 import { NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
 import { CONFIGURACOES_PADRAO, type Configuracoes, type Norma, type Ocorrencia } from "@/lib/types";
-import type { NovaOcorrencia, Repositorio } from "./repositorio";
+import type { NovoAnexo, NovaOcorrencia, Repositorio } from "./repositorio";
+
+interface AnexoArquivo {
+  id: string;
+  ocorrenciaId?: string;
+  nome: string;
+  tipo: string;
+  largura: number;
+  altura: number;
+  criadoEm: string;
+}
 
 interface Banco {
   normas: Norma[];
   ocorrencias: Ocorrencia[];
   sequencias: Record<string, number>;
   configuracoes: Configuracoes;
+  anexos?: AnexoArquivo[];
 }
 
 /**
@@ -23,6 +34,45 @@ export class RepositorioArquivo implements Repositorio {
   private fila: Promise<unknown> = Promise.resolve();
 
   constructor(private arquivo = path.join(process.cwd(), "dados", "banco.json")) {}
+
+  private caminhoAnexo(id: string) {
+    return path.join(path.dirname(this.arquivo), "anexos", `${id}.bin`);
+  }
+
+  /** Vincula as fotos à ocorrência e remove as que deixaram de fazer parte dela. */
+  private async vincularAnexos(db: Banco, o: Ocorrencia) {
+    const ids = new Set((o.anexos ?? []).map((a) => a.id));
+    const lista = db.anexos ?? [];
+    for (const a of lista.filter((x) => x.ocorrenciaId === o.id && !ids.has(x.id))) {
+      await fs.rm(this.caminhoAnexo(a.id), { force: true });
+    }
+    db.anexos = lista.filter((x) => !(x.ocorrenciaId === o.id && !ids.has(x.id)));
+    for (const a of db.anexos) if (ids.has(a.id) && !a.ocorrenciaId) a.ocorrenciaId = o.id;
+  }
+
+  private async removerAnexosDe(db: Banco, ocorrenciaId?: string) {
+    const remover = (db.anexos ?? []).filter((a) => !ocorrenciaId || a.ocorrenciaId === ocorrenciaId);
+    for (const a of remover) await fs.rm(this.caminhoAnexo(a.id), { force: true });
+    db.anexos = (db.anexos ?? []).filter((a) => !remover.includes(a));
+  }
+
+  salvarAnexo(a: NovoAnexo) {
+    return this.exclusivo(async (db) => {
+      const id = randomUUID();
+      await fs.mkdir(path.dirname(this.caminhoAnexo(id)), { recursive: true });
+      await fs.writeFile(this.caminhoAnexo(id), a.dados);
+      db.anexos = [...(db.anexos ?? []), { id, nome: a.nome, tipo: a.tipo, largura: a.largura, altura: a.altura, criadoEm: new Date().toISOString() }];
+      return { id, nome: a.nome, largura: a.largura, altura: a.altura };
+    }, true);
+  }
+
+  obterAnexo(id: string) {
+    return this.exclusivo(async (db) => {
+      const a = (db.anexos ?? []).find((x) => x.id === id);
+      if (!a) return null;
+      return { tipo: a.tipo, dados: await fs.readFile(this.caminhoAnexo(id)) };
+    }, false);
+  }
 
   /** Serializa leituras/escritas para evitar condições de corrida. */
   private exclusivo<T>(fn: (db: Banco) => Promise<T> | T, gravar: boolean): Promise<T> {
@@ -105,35 +155,39 @@ export class RepositorioArquivo implements Repositorio {
   }
 
   criarOcorrencia(dados: NovaOcorrencia) {
-    return this.exclusivo((db) => {
+    return this.exclusivo(async (db) => {
       const agora = new Date().toISOString();
       const o: Ocorrencia = { ...dados, id: randomUUID(), protocolo: this.protocolo(db, Number(dados.data.slice(0, 4))), criadoEm: agora, atualizadoEm: agora };
       db.ocorrencias.push(o);
+      await this.vincularAnexos(db, o);
       return o;
     }, true);
   }
 
   atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>) {
-    return this.exclusivo((db) => {
+    return this.exclusivo(async (db) => {
       const i = db.ocorrencias.findIndex((o) => o.id === id);
       if (i < 0) return null;
       const atual = db.ocorrencias[i];
       const o: Ocorrencia = { ...atual, ...dados, id: atual.id, protocolo: atual.protocolo, criadoEm: atual.criadoEm, atualizadoEm: new Date().toISOString() };
       db.ocorrencias[i] = o;
+      await this.vincularAnexos(db, o);
       return o;
     }, true);
   }
 
   excluirOcorrencia(id: string) {
-    return this.exclusivo((db) => {
+    return this.exclusivo(async (db) => {
       db.ocorrencias = db.ocorrencias.filter((o) => o.id !== id);
+      await this.removerAnexosDe(db, id);
     }, true);
   }
 
   restaurarDemonstracao() {
-    return this.exclusivo((db) => {
+    return this.exclusivo(async (db) => {
       db.ocorrencias = [];
       db.sequencias = {};
+      await this.removerAnexosDe(db);
       this.semear(db);
     }, true);
   }

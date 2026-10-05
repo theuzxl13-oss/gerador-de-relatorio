@@ -2,6 +2,7 @@ import { criarSnapshot } from "@/lib/citacao";
 import {
   TRATAMENTOS,
   STATUS_LABEL,
+  type AnexoInfo,
   type FundamentacaoSnapshot,
   type Norma,
   type Ocorrencia,
@@ -49,6 +50,23 @@ function fundamentacao(
   return criarSnapshot(norma, origem, confianca);
 }
 
+const MAX_ANEXOS = 6;
+
+function anexos(v: unknown): AnexoInfo[] | undefined {
+  if (!Array.isArray(v) || v.length === 0) return undefined;
+  if (v.length > MAX_ANEXOS) throw new ErroValidacao(`Máximo de ${MAX_ANEXOS} imagens por relatório.`);
+  return v.map((a) => {
+    const x = a as Partial<AnexoInfo>;
+    if (typeof x.id !== "string" || !/^[0-9a-f-]{36}$/i.test(x.id)) throw new ErroValidacao("Imagem inválida.");
+    return {
+      id: x.id,
+      nome: String(x.nome ?? "imagem").slice(0, 120),
+      largura: Math.max(1, Math.round(Number(x.largura) || 1)),
+      altura: Math.max(1, Math.round(Number(x.altura) || 1)),
+    };
+  });
+}
+
 export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: Ocorrencia): NovaOcorrencia {
   if (!body || typeof body !== "object") throw new ErroValidacao("Dados inválidos.");
   const b = body as Record<string, unknown>;
@@ -88,6 +106,9 @@ export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: O
     fundamentacaoComplementar: complementar,
     incluirTextoNorma: b.incluirTextoNorma !== false,
     observacoes: texto(b.observacoes, "Observações", false, 4000),
+    anexos: anexos(b.anexos),
+    assinaturaNome: texto(b.assinaturaNome, "Assinatura – nome", false, 120),
+    assinaturaCargo: texto(b.assinaturaCargo, "Assinatura – cargo", false, 120),
     // Sem fundamentação, a ocorrência fica encaminhada para análise da Administração.
     status: !principal && status === "REGISTRADA" ? "AGUARDANDO_ANALISE" : status,
   };

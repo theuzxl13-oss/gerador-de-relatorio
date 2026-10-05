@@ -17,7 +17,7 @@ export default async function NovaOcorrencia({ searchParams }: { searchParams: P
             : "Preencha os dados, pesquise a fundamentação, confira e gere o relatório."}
         </p>
       </div>
-      <FormularioOcorrencia key={modelo?.id ?? "nova"} modelo={modelo ?? undefined} incluirTextoPadrao={cfg.incluirTextoNormaPadrao} termoSecao={cfg.termoSecaoRegulamento} />
+      <FormularioOcorrencia key={modelo?.id ?? "nova"} modelo={modelo ?? undefined} incluirTextoPadrao={cfg.incluirTextoNormaPadrao} termoSecao={cfg.termoSecaoRegulamento} assinaturaPadrao={{ nome: cfg.responsavelNome, cargo: cfg.responsavelCargo }} />
     </div>
   );
 }

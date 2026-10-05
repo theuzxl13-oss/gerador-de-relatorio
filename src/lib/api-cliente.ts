@@ -1,5 +1,5 @@
 import type { ResultadoAnalise } from "./analysis/engine";
-import type { Configuracoes, Norma, Ocorrencia } from "./types";
+import type { AnexoInfo, Configuracoes, Norma, Ocorrencia } from "./types";
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, {
@@ -28,6 +28,9 @@ export const api = {
 
   analisar: (dados: { ocorrencia: string; descricao?: string; horario?: string; data?: string; tratamento?: string }) =>
     req<ResultadoAnalise>("/api/analisar", { method: "POST", body: json(dados) }),
+
+  enviarAnexo: (a: { nome: string; tipo: string; largura: number; altura: number; dados: string }) =>
+    req<AnexoInfo>("/api/anexos", { method: "POST", body: json(a) }),
 
   configuracoes: () => req<Configuracoes>("/api/configuracoes"),
   salvarConfiguracoes: (c: Configuracoes) => req<Configuracoes>("/api/configuracoes", { method: "PUT", body: json(c) }),

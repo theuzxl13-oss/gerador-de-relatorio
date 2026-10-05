@@ -105,8 +105,8 @@ test("parágrafo do relatório", () => {
 });
 
 test("quadra e lote", () => {
-  assert.equal(textoQuadraLote("9", "8"), "Q=09 L=08");
-  assert.equal(textoQuadraLote("12", "04"), "Q=12 L=04");
+  assert.equal(textoQuadraLote("93", "8"), "Q93 L08");
+  assert.equal(textoQuadraLote("12", "04"), "Q12 L04");
 });
 
 test("protocolo anual", () => {

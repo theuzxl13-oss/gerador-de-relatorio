@@ -3,7 +3,9 @@ import { Pool, type PoolClient } from "pg";
 import { NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
 import { CONFIGURACOES_PADRAO, type Configuracoes, type Norma, type Ocorrencia } from "@/lib/types";
-import type { NovaOcorrencia, Repositorio } from "./repositorio";
+import type { NovoAnexo, NovaOcorrencia, Repositorio } from "./repositorio";
+
+const UUID = /^[0-9a-f-]{36}$/i;
 
 /**
  * Esquema mínimo. Os registros completos ficam em JSONB (`dados`), e as
@@ -32,6 +34,18 @@ create table if not exists protocolo_sequencia (
   ano     integer primary key,
   ultimo  integer not null
 );
+
+create table if not exists anexos (
+  id            uuid primary key,
+  ocorrencia_id uuid references ocorrencias(id) on delete cascade,
+  nome          text not null,
+  tipo          text not null,
+  largura       integer not null,
+  altura        integer not null,
+  dados         bytea not null,
+  criado_em     timestamptz not null default now()
+);
+create index if not exists anexos_ocorrencia_idx on anexos (ocorrencia_id);
 
 create table if not exists configuracoes (
   id    integer primary key default 1 check (id = 1),
@@ -175,6 +189,7 @@ export class RepositorioPostgres implements Repositorio {
       const agora = new Date().toISOString();
       const o: Ocorrencia = { ...dados, id: randomUUID(), protocolo, criadoEm: agora, atualizadoEm: agora };
       await c.query("insert into ocorrencias (id, protocolo, data, dados) values ($1, $2, $3, $4)", [o.id, protocolo, o.data, o]);
+      await this.vincularAnexos(c, o);
       await c.query("commit");
       return o;
     } catch (e) {
@@ -189,8 +204,44 @@ export class RepositorioPostgres implements Repositorio {
     const atual = await this.obterOcorrencia(id);
     if (!atual) return null;
     const o: Ocorrencia = { ...atual, ...dados, id: atual.id, protocolo: atual.protocolo, criadoEm: atual.criadoEm, atualizadoEm: new Date().toISOString() };
-    await this.pool.query("update ocorrencias set data = $2, dados = $3, atualizado_em = now() where id = $1", [id, o.data, o]);
+    const c = await this.pool.connect();
+    try {
+      await c.query("begin");
+      await c.query("update ocorrencias set data = $2, dados = $3, atualizado_em = now() where id = $1", [id, o.data, o]);
+      await this.vincularAnexos(c, o);
+      await c.query("commit");
+    } catch (e) {
+      await c.query("rollback");
+      throw e;
+    } finally {
+      c.release();
+    }
     return o;
+  }
+
+  /** Vincula as fotos à ocorrência e remove as que deixaram de fazer parte dela. */
+  private async vincularAnexos(c: PoolClient, o: Ocorrencia) {
+    const ids = (o.anexos ?? []).map((a) => a.id).filter((x) => UUID.test(x));
+    await c.query("delete from anexos where ocorrencia_id = $1 and not (id = any($2::uuid[]))", [o.id, ids]);
+    if (ids.length) await c.query("update anexos set ocorrencia_id = $1 where id = any($2::uuid[]) and (ocorrencia_id is null or ocorrencia_id = $1)", [o.id, ids]);
+  }
+
+  async salvarAnexo(a: NovoAnexo) {
+    await this.iniciar();
+    // Limpa fotos enviadas e nunca vinculadas (formulário abandonado) há mais de 1 dia.
+    await this.pool.query("delete from anexos where ocorrencia_id is null and criado_em < now() - interval '1 day'");
+    const id = randomUUID();
+    await this.pool.query("insert into anexos (id, nome, tipo, largura, altura, dados) values ($1, $2, $3, $4, $5, $6)", [
+      id, a.nome, a.tipo, a.largura, a.altura, a.dados,
+    ]);
+    return { id, nome: a.nome, largura: a.largura, altura: a.altura };
+  }
+
+  async obterAnexo(id: string) {
+    await this.iniciar();
+    if (!UUID.test(id)) return null;
+    const { rows } = await this.pool.query("select tipo, dados from anexos where id = $1", [id]);
+    return rows[0] ? { tipo: rows[0].tipo as string, dados: rows[0].dados as Buffer } : null;
   }
 
   async excluirOcorrencia(id: string) {

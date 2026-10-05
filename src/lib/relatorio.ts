@@ -59,7 +59,7 @@ export function sujeito(tratamento: Tratamento, genero?: Genero, tratamentoOutro
 
 export function textoQuadraLote(quadra: string, lote: string): string {
   const fmt = (v: string) => (/^\d$/.test(v.trim()) ? `0${v.trim()}` : v.trim());
-  return `Q=${fmt(quadra)} L=${fmt(lote)}`;
+  return `Q${fmt(quadra)} L${fmt(lote)}`;
 }
 
 type DadosParagrafo = Pick<
@@ -127,6 +127,8 @@ export interface ConteudoRelatorio {
   descricao?: string;
   fundamentacoes: BlocoFundamentacao[];
   observacoes?: string;
+  /** Fotos anexadas (URL para exibição e dimensões originais). */
+  imagens: { url: string; largura: number; altura: number; nome: string }[];
   responsavelNome?: string;
   responsavelCargo?: string;
 }
@@ -142,7 +144,7 @@ export function montarRelatorio(o: Ocorrencia, cfg: Configuracoes): ConteudoRela
     destinatario: `A/C: ${cfg.destinatario}`,
     protocolo: o.protocolo,
     linhas: [
-      { rotulo: "Ocorrência", valor: o.ocorrencia },
+      { rotulo: "Ocorrências", valor: o.ocorrencia.toUpperCase() },
       { rotulo: "Nome", valor: o.nome },
     ],
     quadraLote: textoQuadraLote(o.quadra, o.lote),
@@ -151,8 +153,9 @@ export function montarRelatorio(o: Ocorrencia, cfg: Configuracoes): ConteudoRela
     descricao: o.descricao?.trim() || undefined,
     fundamentacoes: o.incluirTextoNorma ? blocosFundamentacao(o, termo) : [],
     observacoes: o.observacoes?.trim() || undefined,
-    responsavelNome: cfg.responsavelNome || undefined,
-    responsavelCargo: cfg.responsavelCargo || undefined,
+    imagens: (o.anexos ?? []).map((a) => ({ url: `/api/anexos/${a.id}`, largura: a.largura, altura: a.altura, nome: a.nome })),
+    responsavelNome: o.assinaturaNome || cfg.responsavelNome || undefined,
+    responsavelCargo: o.assinaturaNome ? o.assinaturaCargo || undefined : cfg.responsavelCargo || undefined,
   };
 }
 

@@ -176,16 +176,17 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · PostgreSQ
 
 ## Modelo do relatório
 
-O relatório (tela, impressão e PDF) segue o modelo oficial da portaria (`MODELO_MENOR_CONDUTOR.doc`):
+O relatório (tela, impressão e PDF) segue os modelos oficiais da portaria (`MODELO_MENOR_CONDUTOR.doc` e `ANIMAL_SOLTO.pdf`):
 
-- **Cabeçalho**: FAZENDA DA ILHA, CNPJ 59.039.586/0001-40, logo e “Onde morar é viver!”
-- **Corpo**: data por extenso, A/C: ADM, protocolo, ocorrência, nome, Q/L, horas e o parágrafo
+- **Cabeçalho** (em todas as páginas): FAZENDA DA ILHA sublinhado, CNPJ 59.039.586/0001-40, logo e “Onde morar é viver”
+- **Corpo** em itálico com linhas espaçadas: data por extenso, A/C: ADM, Protocolo, Ocorrências (em maiúsculas), Nome, Q93 L08, Horas e o parágrafo
 - **Complemento do texto** (opcional): o relato do fato, inserido logo após a citação. Exemplo:
-  > Informo que o associado citado acima descumpriu o Item 8 do tópico III – DAS PROIBIÇÕES do Regulamento Interno ao deixar conduzir o veículo, sendo constatado que o condutor era menor de idade.
-- **Assinatura**: nome e cargo do responsável (padrão: Michael Martins, Líder Operacional)
-- **Rodapé**: endereço, telefones e site da Associação
+  > Informo que o associado citado acima descumpriu o Item 4 do tópico III – DAS PROIBIÇÕES do Regulamento Interno ao deixar o seu animal solto nas áreas comuns da associação.
+- **Fotos / imagens** (opcional, até 6): a primeira aparece reduzida abaixo do texto, e cada foto também sai ampliada em uma página própria. As fotos são reduzidas no próprio celular (até 1600 px, JPEG) antes do envio e ficam guardadas no banco de dados
+- **Assinatura**: nome e cargo de quem registrou (ex.: José Luiz – Zelador). É informada em cada ocorrência, e o sistema lembra a última assinatura usada em cada aparelho
+- **Rodapé** (em todas as páginas): endereço, telefones e site da Associação
 
-Todos esses dados podem ser alterados em **Configurações**. Lá também é possível escolher como as seções do Regulamento são citadas: "Item 8 do **tópico** III" (padrão) ou "Item 8 do **Artigo** III", como no modelo antigo.
+Os dados do cabeçalho e do rodapé podem ser alterados em **Configurações**. Lá também é possível escolher como as seções do Regulamento são citadas: "Item 4 do **tópico** III" (padrão) ou "Item 4 do **Artigo** III", como nos modelos.
 
 ## Logo
 

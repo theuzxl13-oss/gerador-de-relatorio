@@ -134,6 +134,14 @@ export const STATUS_LABEL: Record<StatusOcorrencia, string> = {
   CANCELADA: "Cancelada",
 };
 
+/** Foto/imagem anexada ao relatório (o arquivo fica na tabela de anexos). */
+export interface AnexoInfo {
+  id: string;
+  nome: string;
+  largura: number;
+  altura: number;
+}
+
 export interface Ocorrencia {
   id: string;
   /** Ex.: "2026-0001" */
@@ -164,6 +172,11 @@ export interface Ocorrencia {
   /** Quando verdadeiro, o texto das normas é transcrito no relatório. */
   incluirTextoNorma: boolean;
   observacoes?: string;
+  /** Fotos/imagens do relatório, na ordem de exibição. */
+  anexos?: AnexoInfo[];
+  /** Quem assina o relatório (padrão: Configurações). */
+  assinaturaNome?: string;
+  assinaturaCargo?: string;
   status: StatusOcorrencia;
   criadoEm: string;
   atualizadoEm: string;

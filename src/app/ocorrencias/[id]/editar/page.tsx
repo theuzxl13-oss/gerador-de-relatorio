@@ -12,7 +12,7 @@ export default async function EditarOcorrencia({ params }: { params: Promise<{ i
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <h1 className="text-2xl font-bold text-gray-900">Editar ocorrência</h1>
-      <FormularioOcorrencia existente={o} incluirTextoPadrao={cfg.incluirTextoNormaPadrao} termoSecao={cfg.termoSecaoRegulamento} />
+      <FormularioOcorrencia existente={o} incluirTextoPadrao={cfg.incluirTextoNormaPadrao} termoSecao={cfg.termoSecaoRegulamento} assinaturaPadrao={{ nome: cfg.responsavelNome, cargo: cfg.responsavelCargo }} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { dataCurta, hojeISO, paragrafoPrincipal } from "@/lib/relatorio";
 import {
   STATUS_LABEL,
   TRATAMENTOS,
+  type AnexoInfo,
   type FundamentacaoSnapshot,
   type Genero,
   type Norma,
@@ -17,6 +18,7 @@ import {
   type TermoSecao,
   type Tratamento,
 } from "@/lib/types";
+import { AnexosFotos } from "./AnexosFotos";
 import { NormaDetalhe } from "./NormaDetalhe";
 import { SeletorNorma } from "./SeletorNorma";
 import { AreaTexto, Aviso, Botao, Campo, Cartao, Entrada, SeloConfianca, Selecao } from "./ui";
@@ -33,6 +35,19 @@ interface Props {
   modelo?: Ocorrencia;
   incluirTextoPadrao: boolean;
   termoSecao: TermoSecao;
+  assinaturaPadrao: { nome: string; cargo: string };
+}
+
+const CHAVE_ASSINATURA = "fazenda-ilha:ultima-assinatura";
+
+/** Última assinatura usada neste aparelho (cada portaria/zeladoria pode ter a sua). */
+function ultimaAssinatura(): { nome: string; cargo: string } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHAVE_ASSINATURA) ?? "null");
+    return v && typeof v.nome === "string" ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 const EXIGE_GENERO: Tratamento[] = ["Visitante", "Outro"];
@@ -42,7 +57,7 @@ function agoraHHMM() {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, termoSecao }: Props) {
+export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, termoSecao, assinaturaPadrao }: Props) {
   const router = useRouter();
   const base = existente ?? modelo;
   const data = existente?.data ?? hojeISO();
@@ -58,6 +73,9 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   const [horario, setHorario] = useState(existente?.horario ?? "");
   const [observacoes, setObservacoes] = useState(existente?.observacoes ?? "");
   const [complemento, setComplemento] = useState(base?.complemento ?? "");
+  const [anexos, setAnexos] = useState<AnexoInfo[]>(existente?.anexos ?? []);
+  const [assinaturaNome, setAssinaturaNome] = useState(existente?.assinaturaNome ?? assinaturaPadrao.nome);
+  const [assinaturaCargo, setAssinaturaCargo] = useState(existente?.assinaturaNome ? existente.assinaturaCargo ?? "" : assinaturaPadrao.cargo);
   const [status, setStatus] = useState<StatusOcorrencia>(existente?.status ?? "REGISTRADA");
   const [incluirTexto, setIncluirTexto] = useState(base?.incluirTextoNorma ?? incluirTextoPadrao);
 
@@ -75,6 +93,15 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   const painelRef = useRef<HTMLDivElement>(null);
 
   const etapaFundamentacao = !!analise || !!principal || semFundamentacao;
+
+  useEffect(() => {
+    if (existente) return;
+    const u = ultimaAssinatura();
+    if (u) {
+      setAssinaturaNome(u.nome);
+      setAssinaturaCargo(u.cargo);
+    }
+  }, [existente]);
 
   useEffect(() => {
     api.normas().then(setNormas).catch(() => setErroGeral("Não foi possível carregar a Base Normativa."));
@@ -154,8 +181,16 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
       fundamentacaoComplementar: encaminharAnalise ? undefined : complementar?.snapshot,
       incluirTextoNorma: incluirTexto,
       observacoes: observacoes.trim() || undefined,
+      anexos,
+      assinaturaNome: assinaturaNome.trim() || undefined,
+      assinaturaCargo: assinaturaCargo.trim() || undefined,
       status: encaminharAnalise ? "AGUARDANDO_ANALISE" : existente ? status : "REGISTRADA",
     };
+    try {
+      localStorage.setItem(CHAVE_ASSINATURA, JSON.stringify({ nome: assinaturaNome.trim(), cargo: assinaturaCargo.trim() }));
+    } catch {
+      /* armazenamento local indisponível */
+    }
     try {
       const salvo = existente ? await api.atualizarOcorrencia(existente.id, dados) : await api.criarOcorrencia(dados);
       router.push(`/ocorrencias/${salvo.id}${existente ? "" : "?novo=1"}`);
@@ -415,6 +450,17 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
                 <p className="rounded-lg bg-gray-50 p-3 text-sm leading-relaxed">{previa}</p>
               </div>
             )}
+            <div className="border-t border-gray-100 pt-4">
+              <AnexosFotos anexos={anexos} aoAlterar={setAnexos} />
+            </div>
+            <div className="grid gap-4 border-t border-gray-100 pt-4 sm:grid-cols-2">
+              <Campo rotulo="Assinatura – nome" ajuda="Quem registrou a ocorrência (ex.: José Luiz).">
+                <Entrada value={assinaturaNome} onChange={(e) => setAssinaturaNome(e.target.value)} maxLength={120} />
+              </Campo>
+              <Campo rotulo="Assinatura – cargo" ajuda="Ex.: Zelador, Líder Operacional, Portaria.">
+                <Entrada value={assinaturaCargo} onChange={(e) => setAssinaturaCargo(e.target.value)} maxLength={120} />
+              </Campo>
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" className="h-4 w-4 accent-marca-700" checked={incluirTexto} onChange={(e) => setIncluirTexto(e.target.checked)} />
               Transcrever o texto da regra no relatório
