@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 448" role="img" aria-label="Fazenda da Ilha - Condomínio Residencial">
+  <defs>
+    <radialGradient id="sol" cx="40%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#ffd76a"/>
+      <stop offset="0.55" stop-color="#f7a823"/>
+      <stop offset="1" stop-color="#e8790f"/>
+    </radialGradient>
+    <linearGradient id="azul" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2a6fd1"/>
+      <stop offset="1" stop-color="#16469a"/>
+    </linearGradient>
+    <linearGradient id="verde" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1f8f3a"/>
+      <stop offset="1" stop-color="#5cc04a"/>
+    </linearGradient>
+    <clipPath id="corte"><rect x="0" y="0" width="448" height="186"/></clipPath>
+  </defs>
+  <rect width="448" height="448" fill="#0b4740"/>
+  <circle cx="165" cy="160" r="72" fill="url(#sol)" clip-path="url(#corte)"/>
+  <path d="M92 168 C150 196 205 150 262 148 C310 146 350 165 372 182 C330 168 300 170 262 182 C205 200 150 222 92 168 Z" fill="url(#azul)"/>
+  <path d="M110 214 C170 238 215 202 275 194 C320 188 352 200 378 220 C336 210 306 214 270 228 C215 250 160 262 110 214 Z" fill="url(#verde)"/>
+  <text x="224" y="300" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="58" fill="#ffffff">Fazenda da ilha</text>
+  <text x="224" y="350" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" letter-spacing="3" fill="#ffffff">CONDOMÍNIO RESIDENCIAL</text>
+  <text x="224" y="372" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" letter-spacing="2" fill="#ffffff">EMBU-GUAÇU - SÃO PAULO</text>
+</svg>

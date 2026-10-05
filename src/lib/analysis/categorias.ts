@@ -40,7 +40,7 @@ export const CATEGORIAS: CategoriaOcorrencia[] = [
   {
     nome: "Transtornos causados por obra",
     termos: [
-      "obra", "obras", "reforma*", "construcao", "poeira", "sujeira da obra", "lama", "transtorno*",
+      "obra", "obras", "reforma*", "construcao", "poeira", "sujeira da obra", "lama",
       "pedreiro*", "trabalhadores da obra",
     ],
   },
