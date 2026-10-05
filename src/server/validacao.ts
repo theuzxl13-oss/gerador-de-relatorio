@@ -91,6 +91,7 @@ export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: O
   }
 
   return {
+    protocolo: texto(b.protocolo, "Protocolo", false, 30) ?? "",
     data,
     horario,
     ocorrencia: texto(b.ocorrencia, "Ocorrência", true, 200)!,

@@ -68,7 +68,7 @@ export function FolhaRelatorio({ r }: { r: ConteudoRelatorio }) {
             <img src={img.url} alt={img.nome} className="mx-auto block max-h-[205mm] w-auto max-w-full object-contain" />
             {r.imagens.length > 1 && (
               <figcaption className="mt-2 text-center font-serif text-[10pt] italic text-gray-700">
-                Imagem {i + 1} de {r.imagens.length} – Protocolo {r.protocolo}
+                Imagem {i + 1} de {r.imagens.length} {r.protocolo ? ` – Protocolo ${r.protocolo}` : ""}
               </figcaption>
             )}
           </figure>

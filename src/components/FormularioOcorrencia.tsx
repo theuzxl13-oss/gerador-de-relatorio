@@ -31,7 +31,7 @@ interface Selecionada {
 interface Props {
   /** Ocorrência existente (edição). */
   existente?: Ocorrencia;
-  /** Ocorrência de origem (duplicação): copia os dados, com nova data e novo protocolo. */
+  /** Ocorrência de origem (duplicação): copia os dados, com nova data e protocolo em branco. */
   modelo?: Ocorrencia;
   incluirTextoPadrao: boolean;
   termoSecao: TermoSecao;
@@ -73,6 +73,8 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   const [horario, setHorario] = useState(existente?.horario ?? "");
   const [observacoes, setObservacoes] = useState(existente?.observacoes ?? "");
   const [complemento, setComplemento] = useState(base?.complemento ?? "");
+  const [protocolo, setProtocolo] = useState(existente?.protocolo ?? "");
+  const [gerarProtocolo, setGerarProtocolo] = useState(false);
   const [anexos, setAnexos] = useState<AnexoInfo[]>(existente?.anexos ?? []);
   const [assinaturaNome, setAssinaturaNome] = useState(existente?.assinaturaNome ?? assinaturaPadrao.nome);
   const [assinaturaCargo, setAssinaturaCargo] = useState(existente?.assinaturaNome ? existente.assinaturaCargo ?? "" : assinaturaPadrao.cargo);
@@ -165,7 +167,9 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
     if (!encaminharAnalise && !principal) return;
     setSalvando(true);
     setErroGeral("");
-    const dados: Partial<Ocorrencia> = {
+    const dados: Partial<Ocorrencia> & { gerarProtocolo?: boolean } = {
+      protocolo: gerarProtocolo ? "" : protocolo.trim(),
+      gerarProtocolo,
       data,
       horario,
       ocorrencia: ocorrencia.trim(),
@@ -219,11 +223,10 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   return (
     <div className="space-y-6">
       <Cartao
-        titulo={existente ? `Editar ocorrência – Protocolo ${existente.protocolo}` : "1. Dados da ocorrência"}
+        titulo={existente ? `Editar ocorrência${existente.protocolo ? ` – Protocolo ${existente.protocolo}` : ""}` : "1. Dados da ocorrência"}
         acoes={
           <span className="text-sm text-gray-600">
-            Data: <strong>{dataCurta(data)}</strong> {existente ? "(data do registro)" : "(automática)"} · Protocolo:{" "}
-            <strong>{existente?.protocolo ?? "gerado ao salvar"}</strong>
+            Data: <strong>{dataCurta(data)}</strong> {existente ? "(data do registro)" : "(automática)"}
           </span>
         }
       >
@@ -292,6 +295,20 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
               </Botao>
             </div>
           </Campo>
+          <Campo rotulo="Protocolo (opcional)" erro={erros.protocolo} className="sm:col-span-3" ajuda="Digite o número do protocolo ou deixe em branco.">
+            <Entrada
+              value={gerarProtocolo ? "" : protocolo}
+              onChange={(e) => setProtocolo(e.target.value)}
+              disabled={gerarProtocolo}
+              placeholder={gerarProtocolo ? "Será gerado ao salvar (ex.: 2026-0012)" : "Ex.: 222/26"}
+              maxLength={30}
+              autoComplete="off"
+            />
+          </Campo>
+          <label className="flex items-center gap-2 self-center text-sm sm:col-span-3 sm:mt-2">
+            <input type="checkbox" className="h-4 w-4 accent-marca-700" checked={gerarProtocolo} onChange={(e) => setGerarProtocolo(e.target.checked)} />
+            Gerar número automaticamente (ano-sequência)
+          </label>
           <Campo rotulo="Descrição complementar (opcional)" className="sm:col-span-6" ajuda="Detalhes ajudam a localizar a regra correta e aparecem no relatório.">
             <AreaTexto
               rows={2}

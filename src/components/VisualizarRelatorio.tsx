@@ -10,7 +10,8 @@ import { FolhaRelatorio } from "./FolhaRelatorio";
 import { Aviso, Botao, BotaoLink, SeloConfianca, SeloStatus, Selecao } from "./ui";
 
 export function nomeArquivoPdf(o: Ocorrencia) {
-  return `Relatorio_${o.protocolo}_Q${o.quadra}_L${o.lote}.pdf`.replace(/[^\w.-]+/g, "_");
+  const id = o.protocolo || o.data;
+  return `Relatorio_${id}_Q${o.quadra}_L${o.lote}.pdf`.replace(/[^\w.-]+/g, "_");
 }
 
 export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInicial }: { ocorrencia: Ocorrencia; configuracoes: Configuracoes; novo?: boolean; acaoInicial?: "imprimir" | "pdf" }) {
@@ -52,7 +53,7 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
   }
 
   async function excluir() {
-    if (!confirm(`Excluir definitivamente a ocorrência ${o.protocolo}? Esta ação não pode ser desfeita.`)) return;
+    if (!confirm(`Excluir definitivamente esta ocorrência${o.protocolo ? ` (protocolo ${o.protocolo})` : ""}? Esta ação não pode ser desfeita.`)) return;
     try {
       await api.excluirOcorrencia(o.id);
       router.push("/historico");
@@ -67,7 +68,7 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       <aside className="nao-imprimir w-full space-y-4 lg:sticky lg:top-24 lg:w-80 lg:shrink-0">
-        {novo && <Aviso tipo="sucesso" titulo="Relatório gerado com sucesso">Protocolo {o.protocolo}.</Aviso>}
+        {novo && <Aviso tipo="sucesso" titulo="Relatório gerado com sucesso">{o.protocolo ? `Protocolo ${o.protocolo}.` : "Sem protocolo informado."}</Aviso>}
         {erro && <Aviso tipo="erro">{erro}</Aviso>}
 
         <div className="grid grid-cols-2 gap-2">
@@ -81,7 +82,7 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
 
         <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="font-semibold">Protocolo {o.protocolo}</span>
+            <span className="font-semibold">{o.protocolo ? `Protocolo ${o.protocolo}` : "Sem protocolo"}</span>
             <SeloStatus status={o.status} />
           </div>
           <label className="block">

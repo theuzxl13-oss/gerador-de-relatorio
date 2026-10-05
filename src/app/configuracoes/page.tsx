@@ -36,7 +36,7 @@ export default function PaginaConfiguracoes() {
   }
 
   async function restaurarDemo() {
-    if (!confirm("ATENÇÃO: todas as ocorrências serão APAGADAS e a numeração de protocolos será reiniciada, recriando apenas os dados demonstrativos. Continuar?")) return;
+    if (!confirm("ATENÇÃO: todas as ocorrências serão APAGADAS e a numeração automática de protocolos será reiniciada, recriando apenas os dados demonstrativos. Continuar?")) return;
     if (!confirm("Confirma a exclusão de TODAS as ocorrências registradas?")) return;
     try {
       await api.restaurarDemonstracao();

@@ -223,7 +223,7 @@ export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
     if (fotos.length > 1) {
       doc.setFont("times", "italic");
       doc.setFontSize(10);
-      doc.text(`Imagem ${i + 1} de ${fotos.length} – Protocolo ${r.protocolo}`, 105, 40 + a + 6, { align: "center" });
+      doc.text(`Imagem ${i + 1} de ${fotos.length}${r.protocolo ? ` – Protocolo ${r.protocolo}` : ""}`, 105, 40 + a + 6, { align: "center" });
     }
   });
 

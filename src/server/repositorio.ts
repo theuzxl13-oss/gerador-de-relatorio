@@ -14,7 +14,7 @@ export interface ArquivoAnexo {
 }
 
 /** Dados de uma nova ocorrência. Protocolo, id e datas de controle são gerados pelo repositório. */
-export type NovaOcorrencia = Omit<Ocorrencia, "id" | "protocolo" | "criadoEm" | "atualizadoEm">;
+export type NovaOcorrencia = Omit<Ocorrencia, "id" | "criadoEm" | "atualizadoEm">;
 
 /**
  * Contrato de persistência. Implementações:
@@ -32,9 +32,14 @@ export interface Repositorio {
 
   listarOcorrencias(): Promise<Ocorrencia[]>;
   obterOcorrencia(id: string): Promise<Ocorrencia | null>;
-  /** Cria a ocorrência gerando o protocolo de forma atômica (AAAA-NNNN). */
-  criarOcorrencia(dados: NovaOcorrencia): Promise<Ocorrencia>;
-  atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>): Promise<Ocorrencia | null>;
+  /**
+   * Cria a ocorrência. O protocolo é o informado pelo usuário (pode ficar em branco)
+   * ou, com `gerarProtocolo`, o próximo da sequência do ano (AAAA-NNNN), gerado de forma atômica.
+   */
+  criarOcorrencia(dados: NovaOcorrencia, gerarProtocolo?: boolean): Promise<Ocorrencia>;
+  atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>, gerarProtocolo?: boolean): Promise<Ocorrencia | null>;
+  /** Indica se o protocolo já está em uso por outra ocorrência. */
+  protocoloEmUso(protocolo: string, excetoId?: string): Promise<boolean>;
   excluirOcorrencia(id: string): Promise<void>;
   /** Apaga todas as ocorrências e recria os dados demonstrativos. */
   restaurarDemonstracao(): Promise<void>;

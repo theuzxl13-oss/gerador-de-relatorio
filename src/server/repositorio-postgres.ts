@@ -22,13 +22,16 @@ create table if not exists normas (
 
 create table if not exists ocorrencias (
   id          uuid primary key,
-  protocolo   text not null unique,
+  protocolo   text not null default '',
   data        date not null,
   dados       jsonb not null,
   criado_em   timestamptz not null default now(),
   atualizado_em timestamptz not null default now()
 );
 create index if not exists ocorrencias_data_idx on ocorrencias (data desc);
+-- O protocolo passou a ser opcional/informado pelo usuário: remove a unicidade antiga.
+alter table ocorrencias drop constraint if exists ocorrencias_protocolo_key;
+create index if not exists ocorrencias_protocolo_idx on ocorrencias (protocolo);
 
 create table if not exists protocolo_sequencia (
   ano     integer primary key,
@@ -118,15 +121,33 @@ export class RepositorioPostgres implements Repositorio {
     }
   }
 
-  /** Incremento atômico da sequência do ano (seguro com acessos simultâneos). */
+  /**
+   * Incremento atômico da sequência do ano (seguro com acessos simultâneos).
+   * Pula números já usados manualmente.
+   */
   private async gerarProtocolo(c: PoolClient | Pool, ano: number): Promise<string> {
-    const { rows } = await c.query(
-      `insert into protocolo_sequencia (ano, ultimo) values ($1, 1)
-       on conflict (ano) do update set ultimo = protocolo_sequencia.ultimo + 1
-       returning ultimo`,
-      [ano],
+    for (;;) {
+      const { rows } = await c.query(
+        `insert into protocolo_sequencia (ano, ultimo) values ($1, 1)
+         on conflict (ano) do update set ultimo = protocolo_sequencia.ultimo + 1
+         returning ultimo`,
+        [ano],
+      );
+      const protocolo = `${ano}-${String(rows[0].ultimo).padStart(4, "0")}`;
+      const existe = await c.query("select 1 from ocorrencias where protocolo = $1 limit 1", [protocolo]);
+      if (existe.rowCount === 0) return protocolo;
+    }
+  }
+
+  async protocoloEmUso(protocolo: string, excetoId?: string) {
+    await this.iniciar();
+    const p = protocolo.trim();
+    if (!p) return false;
+    const { rowCount } = await this.pool.query(
+      "select 1 from ocorrencias where lower(protocolo) = lower($1) and ($2::uuid is null or id <> $2::uuid) limit 1",
+      [p, excetoId && UUID.test(excetoId) ? excetoId : null],
     );
-    return `${ano}-${String(rows[0].ultimo).padStart(4, "0")}`;
+    return (rowCount ?? 0) > 0;
   }
 
   async listarNormas() {
@@ -180,12 +201,12 @@ export class RepositorioPostgres implements Repositorio {
     return (rows[0]?.dados as Ocorrencia) ?? null;
   }
 
-  async criarOcorrencia(dados: NovaOcorrencia) {
+  async criarOcorrencia(dados: NovaOcorrencia, gerarProtocolo = false) {
     await this.iniciar();
     const c = await this.pool.connect();
     try {
       await c.query("begin");
-      const protocolo = await this.gerarProtocolo(c, Number(dados.data.slice(0, 4)));
+      const protocolo = gerarProtocolo ? await this.gerarProtocolo(c, Number(dados.data.slice(0, 4))) : (dados.protocolo ?? "").trim();
       const agora = new Date().toISOString();
       const o: Ocorrencia = { ...dados, id: randomUUID(), protocolo, criadoEm: agora, atualizadoEm: agora };
       await c.query("insert into ocorrencias (id, protocolo, data, dados) values ($1, $2, $3, $4)", [o.id, protocolo, o.data, o]);
@@ -200,14 +221,22 @@ export class RepositorioPostgres implements Repositorio {
     }
   }
 
-  async atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>) {
+  async atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>, gerarProtocolo = false) {
     const atual = await this.obterOcorrencia(id);
     if (!atual) return null;
-    const o: Ocorrencia = { ...atual, ...dados, id: atual.id, protocolo: atual.protocolo, criadoEm: atual.criadoEm, atualizadoEm: new Date().toISOString() };
+    const o: Ocorrencia = {
+      ...atual,
+      ...dados,
+      id: atual.id,
+      protocolo: (dados.protocolo ?? atual.protocolo ?? "").trim(),
+      criadoEm: atual.criadoEm,
+      atualizadoEm: new Date().toISOString(),
+    };
     const c = await this.pool.connect();
     try {
       await c.query("begin");
-      await c.query("update ocorrencias set data = $2, dados = $3, atualizado_em = now() where id = $1", [id, o.data, o]);
+      if (gerarProtocolo) o.protocolo = await this.gerarProtocolo(c, Number(o.data.slice(0, 4)));
+      await c.query("update ocorrencias set data = $2, protocolo = $3, dados = $4, atualizado_em = now() where id = $1", [id, o.data, o.protocolo, o]);
       await this.vincularAnexos(c, o);
       await c.query("commit");
     } catch (e) {

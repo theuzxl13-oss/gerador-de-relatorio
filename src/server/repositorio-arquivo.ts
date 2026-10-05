@@ -106,9 +106,17 @@ export class RepositorioArquivo implements Repositorio {
   }
 
   private protocolo(db: Banco, ano: number) {
-    const n = (db.sequencias[ano] ?? 0) + 1;
-    db.sequencias[ano] = n;
-    return `${ano}-${String(n).padStart(4, "0")}`;
+    for (;;) {
+      const n = (db.sequencias[ano] ?? 0) + 1;
+      db.sequencias[ano] = n;
+      const p = `${ano}-${String(n).padStart(4, "0")}`;
+      if (!db.ocorrencias.some((o) => o.protocolo === p)) return p;
+    }
+  }
+
+  protocoloEmUso(protocolo: string, excetoId?: string) {
+    const p = protocolo.trim().toLowerCase();
+    return this.exclusivo((db) => !!p && db.ocorrencias.some((o) => o.id !== excetoId && (o.protocolo ?? "").toLowerCase() === p), false);
   }
 
   private semear(db: Banco) {
@@ -154,22 +162,31 @@ export class RepositorioArquivo implements Repositorio {
     return this.exclusivo((db) => db.ocorrencias.find((o) => o.id === id) ?? null, false);
   }
 
-  criarOcorrencia(dados: NovaOcorrencia) {
+  criarOcorrencia(dados: NovaOcorrencia, gerarProtocolo = false) {
     return this.exclusivo(async (db) => {
       const agora = new Date().toISOString();
-      const o: Ocorrencia = { ...dados, id: randomUUID(), protocolo: this.protocolo(db, Number(dados.data.slice(0, 4))), criadoEm: agora, atualizadoEm: agora };
+      const protocolo = gerarProtocolo ? this.protocolo(db, Number(dados.data.slice(0, 4))) : (dados.protocolo ?? "").trim();
+      const o: Ocorrencia = { ...dados, id: randomUUID(), protocolo, criadoEm: agora, atualizadoEm: agora };
       db.ocorrencias.push(o);
       await this.vincularAnexos(db, o);
       return o;
     }, true);
   }
 
-  atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>) {
+  atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>, gerarProtocolo = false) {
     return this.exclusivo(async (db) => {
       const i = db.ocorrencias.findIndex((o) => o.id === id);
       if (i < 0) return null;
       const atual = db.ocorrencias[i];
-      const o: Ocorrencia = { ...atual, ...dados, id: atual.id, protocolo: atual.protocolo, criadoEm: atual.criadoEm, atualizadoEm: new Date().toISOString() };
+      const o: Ocorrencia = {
+        ...atual,
+        ...dados,
+        id: atual.id,
+        protocolo: (dados.protocolo ?? atual.protocolo ?? "").trim(),
+        criadoEm: atual.criadoEm,
+        atualizadoEm: new Date().toISOString(),
+      };
+      if (gerarProtocolo) o.protocolo = this.protocolo(db, Number(o.data.slice(0, 4)));
       db.ocorrencias[i] = o;
       await this.vincularAnexos(db, o);
       return o;

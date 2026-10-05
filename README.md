@@ -13,7 +13,7 @@ Sistema web para a Administração da **Associação dos Adquirentes de Unidades
 | Área | O que faz |
 |---|---|
 | **Painel inicial** | Atalhos (Nova ocorrência, Histórico, Base normativa, Configurações), ocorrências de hoje, do mês, total e as mais frequentes |
-| **Nova ocorrência** | Pede ocorrência, nome, tratamento, quadra, lote e horário. A data é automática e o protocolo é gerado ao salvar (`2026-0001`, `2026-0002`… reinicia a cada ano) |
+| **Nova ocorrência** | Pede ocorrência, nome, tratamento, quadra, lote e horário. A data é automática. O protocolo pode ser digitado (ex.: `222/26`), deixado em branco ou gerado automaticamente (`2026-0001`, `2026-0002`… reinicia a cada ano) |
 | **Análise automática** | Interpreta a ocorrência em linguagem simples (sinônimos, categorias, palavras-chave, contexto de horário e dia da semana) e sugere a norma com nível de confiança Alta, Média ou Baixa |
 | **Confirmação** | Mostra **FUNDAMENTAÇÃO ENCONTRADA** com o documento, a seção, o item/subitem, o trecho real e a confiança. Botões: *Confirmar e gerar relatório*, *Alterar fundamentação* e *Pesquisar outra regra* |
 | **Fundamentação principal e complementar** | Inclui uma segunda norma só quando ela tem relação real com a ocorrência |

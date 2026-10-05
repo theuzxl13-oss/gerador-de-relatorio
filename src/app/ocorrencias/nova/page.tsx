@@ -13,7 +13,7 @@ export default async function NovaOcorrencia({ searchParams }: { searchParams: P
         <h1 className="text-2xl font-bold text-gray-900">{modelo ? "Duplicar ocorrência" : "Nova ocorrência"}</h1>
         <p className="text-sm text-gray-600">
           {modelo
-            ? `Cópia do protocolo ${modelo.protocolo}. Será gerado um novo protocolo com a data de hoje. Confira o horário.`
+            ? `Cópia de “${modelo.ocorrencia}” (${modelo.nome}). A nova ocorrência terá a data de hoje; informe o protocolo e confira o horário.`
             : "Preencha os dados, pesquise a fundamentação, confira e gere o relatório."}
         </p>
       </div>

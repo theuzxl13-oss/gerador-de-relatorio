@@ -111,7 +111,7 @@ export default async function Inicio() {
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{o.ocorrencia}</span>
                       <span className="block truncate text-xs text-gray-500">
-                        {o.protocolo} · {dataCurta(o.data)} {o.horario} · {o.nome} · Q{o.quadra} L{o.lote}
+                        {o.protocolo || "Sem protocolo"} · {dataCurta(o.data)} {o.horario} · {o.nome} · Q{o.quadra} L{o.lote}
                       </span>
                     </span>
                     <SeloStatus status={o.status} />

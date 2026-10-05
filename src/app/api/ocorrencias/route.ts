@@ -1,6 +1,6 @@
 import { repositorio } from "@/server/db";
 import { responder } from "@/server/api";
-import { validarOcorrencia } from "@/server/validacao";
+import { ErroValidacao, validarOcorrencia } from "@/server/validacao";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,10 @@ export async function POST(req: Request) {
   return responder(async () => {
     const repo = repositorio();
     const dados = validarOcorrencia(body, await repo.listarNormas());
-    return repo.criarOcorrencia(dados);
+    const gerar = (body as { gerarProtocolo?: unknown })?.gerarProtocolo === true;
+    if (!gerar && dados.protocolo && (await repo.protocoloEmUso(dados.protocolo))) {
+      throw new ErroValidacao(`Já existe uma ocorrência com o protocolo "${dados.protocolo}".`);
+    }
+    return repo.criarOcorrencia(gerar ? { ...dados, protocolo: "" } : dados, gerar);
   }, 201);
 }

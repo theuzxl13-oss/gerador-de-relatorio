@@ -72,7 +72,7 @@ export default function Historico() {
   const filtrosAtivos = Object.entries(f).filter(([k, v]) => k !== "busca" && v).length;
 
   async function excluir(o: Ocorrencia) {
-    if (!confirm(`Excluir definitivamente a ocorrência ${o.protocolo} (${o.nome})?`)) return;
+    if (!confirm(`Excluir definitivamente a ocorrência ${o.protocolo ? `${o.protocolo} ` : ""}(${o.ocorrencia} – ${o.nome})?`)) return;
     try {
       await api.excluirOcorrencia(o.id);
       setOcorrencias((l) => l!.filter((x) => x.id !== o.id));
@@ -190,7 +190,7 @@ export default function Historico() {
                   <tr key={o.id} className="align-top hover:bg-gray-50">
                     <td className="whitespace-nowrap px-3 py-2.5">{dataCurta(o.data)}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 font-medium">
-                      <Link href={`/ocorrencias/${o.id}`} className="text-marca-700 hover:underline">{o.protocolo}</Link>
+                      <Link href={`/ocorrencias/${o.id}`} className="text-marca-700 hover:underline">{o.protocolo || "—"}</Link>
                     </td>
                     <td className="px-3 py-2.5">{o.nome}<div className="text-xs text-gray-500">{o.tratamento === "Outro" ? o.tratamentoOutro || "Outro" : o.tratamento}</div></td>
                     <td className="px-3 py-2.5">{o.quadra}</td>
@@ -218,7 +218,7 @@ export default function Historico() {
                   <SeloStatus status={o.status} />
                 </div>
                 <div className="mt-2 text-xs text-gray-500">
-                  {o.protocolo} · {dataCurta(o.data)} às {o.horario} · {fundamentacaoCurta(o)}
+                  {o.protocolo || "Sem protocolo"} · {dataCurta(o.data)} às {o.horario} · {fundamentacaoCurta(o)}
                 </div>
                 <div className="mt-2 border-t border-gray-100 pt-2"><Acoes o={o} /></div>
               </li>

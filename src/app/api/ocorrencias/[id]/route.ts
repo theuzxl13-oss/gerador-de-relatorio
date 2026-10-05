@@ -1,6 +1,6 @@
 import { repositorio } from "@/server/db";
 import { naoEncontrado, responder } from "@/server/api";
-import { validarOcorrencia } from "@/server/validacao";
+import { ErroValidacao, validarOcorrencia } from "@/server/validacao";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,11 @@ export async function PUT(req: Request, ctx: Ctx) {
   if (!atual) return naoEncontrado("Ocorrência não encontrada.");
   return responder(async () => {
     const dados = validarOcorrencia({ ...body, data: atual.data }, await repo.listarNormas(), atual);
-    return repo.atualizarOcorrencia(id, dados);
+    const gerar = (body as { gerarProtocolo?: unknown })?.gerarProtocolo === true;
+    if (!gerar && dados.protocolo && (await repo.protocoloEmUso(dados.protocolo, id))) {
+      throw new ErroValidacao(`Já existe outra ocorrência com o protocolo "${dados.protocolo}".`);
+    }
+    return repo.atualizarOcorrencia(id, dados, gerar);
   });
 }
 
