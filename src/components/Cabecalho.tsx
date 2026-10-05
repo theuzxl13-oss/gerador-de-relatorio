@@ -22,7 +22,7 @@ export function Cabecalho() {
     <header className="nao-imprimir sticky top-0 z-30 bg-marca-800 text-white shadow-md">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
         <Link href="/" className="flex min-w-0 items-center gap-3" onClick={() => setAberto(false)}>
-          <Logo className="h-12 w-12 shrink-0 sm:h-14 sm:w-14" />
+          <Logo className="h-11 w-auto shrink-0 sm:h-12" />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-base font-semibold sm:text-lg">Fazenda da Ilha</div>
             <div className="truncate text-sm italic text-sol">Onde morar é viver!</div>

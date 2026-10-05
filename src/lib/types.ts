@@ -146,6 +146,11 @@ export interface Ocorrencia {
   ocorrencia: string;
   /** Descrição complementar opcional. */
   descricao?: string;
+  /**
+   * Complemento inserido no parágrafo do relatório, após a citação da norma.
+   * Ex.: "ao deixar conduzir o veículo, sendo constatado que o condutor era menor de idade".
+   */
+  complemento?: string;
   nome: string;
   tratamento: Tratamento;
   /** Usado para Visitante/Outro, onde o tratamento não define o gênero. */
@@ -164,20 +169,36 @@ export interface Ocorrencia {
   atualizadoEm: string;
 }
 
+/** Como as seções do Regulamento são chamadas no texto do relatório. */
+export type TermoSecao = "tópico" | "Artigo";
+
 export interface Configuracoes {
   nomeAssociacao: string;
+  /** Nome curto exibido no cabeçalho do relatório. */
+  nomeCabecalho: string;
+  cnpj: string;
+  slogan: string;
+  /** Linha de rodapé (endereço, contato, site). */
+  rodape: string;
   cidade: string;
   destinatario: string;
   incluirTextoNormaPadrao: boolean;
+  termoSecaoRegulamento: TermoSecao;
   responsavelNome: string;
   responsavelCargo: string;
 }
 
 export const CONFIGURACOES_PADRAO: Configuracoes = {
   nomeAssociacao: "Associação dos Adquirentes de Unidades no Empreendimento Fazenda da Ilha",
+  nomeCabecalho: "FAZENDA DA ILHA",
+  cnpj: "59.039.586/0001-40",
+  slogan: "Onde morar é viver!",
+  rodape:
+    "Associação dos Adquirentes de Unidade No Empreendimento Fazenda da Ilha - Endereço: Rua Córsega, 200 - Bairro: Fazenda da Ilha - CEP: 06905-500 - Contato: (11) 4662-9900 – (11) 4661-7066 - SITE: WWW.FAZENDADAILHA.COM.BR",
   cidade: "Embu-Guaçu",
   destinatario: "ADM",
-  incluirTextoNormaPadrao: true,
-  responsavelNome: "",
-  responsavelCargo: "",
+  incluirTextoNormaPadrao: false,
+  termoSecaoRegulamento: "tópico",
+  responsavelNome: "Michael Martins",
+  responsavelCargo: "Líder Operacional",
 };

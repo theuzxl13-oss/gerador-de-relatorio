@@ -33,6 +33,8 @@ const ESPERADOS: [string, string, string?][] = [
   ["Animal causando transtorno", "RI-III-4"],
   ["Construção irregular", "RI-III-13"],
   ["soltou balão", "RI-XIV-3"],
+  ["Menor conduzindo veículo", "RI-III-8"],
+  ["condutor menor de idade dirigindo o carro", "RI-III-8"],
 ];
 
 for (const [texto, id, horario] of ESPERADOS) {
@@ -111,4 +113,16 @@ test("protocolo anual", () => {
   assert.equal(proximoProtocolo(2026, []), "2026-0001");
   assert.equal(proximoProtocolo(2026, ["2026-0001", "2026-0002", "2025-0090"]), "2026-0003");
   assert.equal(proximoProtocolo(2027, ["2026-0150"]), "2027-0001");
+});
+
+test("parágrafo com complemento (modelo oficial) e termo 'Artigo'", () => {
+  const base = { tratamento: "Associado" as const, fundamentacaoPrincipal: criarSnapshot(norma("RI-III-8"), "AUTOMATICA", "ALTA") };
+  assert.equal(
+    paragrafoPrincipal({ ...base, complemento: ", ao deixar conduzir o veículo, sendo constatado que o condutor era menor de idade." }),
+    "Informo que o associado citado acima descumpriu o Item 8 do tópico III – DAS PROIBIÇÕES do Regulamento Interno ao deixar conduzir o veículo, sendo constatado que o condutor era menor de idade.",
+  );
+  assert.equal(
+    paragrafoPrincipal(base, "Artigo"),
+    "Informo que o associado citado acima descumpriu o Item 8 do Artigo III – DAS PROIBIÇÕES do Regulamento Interno, conforme ocorrência descrita acima.",
+  );
 });

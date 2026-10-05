@@ -99,7 +99,8 @@ export const CATEGORIAS: CategoriaOcorrencia[] = [
     termos: [
       "sem habilitacao", "sem carteira", "nao habilitado", "inabilitado", "menor dirigindo",
       "crianca dirigindo", "adolescente dirigindo", "menor de idade dirigindo", "dirigindo sem",
-      "pilotando sem", "cartao de identificacao", "sem cartao",
+      "pilotando sem", "cartao de identificacao", "sem cartao", "menor conduzindo", "menor de idade", "conduzindo",
+      "conduzir", "conduziu", "condutor*", "conducao", "dirigindo", "pilotando",
     ],
   },
   {

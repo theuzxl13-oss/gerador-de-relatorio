@@ -77,6 +77,7 @@ export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: O
     horario,
     ocorrencia: texto(b.ocorrencia, "Ocorrência", true, 200)!,
     descricao: texto(b.descricao, "Descrição", false, 4000),
+    complemento: principal ? texto(b.complemento, "Complemento do texto", false, 600) : undefined,
     nome: texto(b.nome, "Nome", true, 200)!,
     tratamento,
     genero,
@@ -130,9 +131,14 @@ export function validarConfiguracoes(body: unknown): Configuracoes {
   const b = body as Record<string, unknown>;
   return {
     nomeAssociacao: texto(b.nomeAssociacao, "Nome da associação", true, 200)!,
+    nomeCabecalho: texto(b.nomeCabecalho, "Nome no cabeçalho", true, 80)!,
+    cnpj: texto(b.cnpj, "CNPJ", false, 30) ?? "",
+    slogan: texto(b.slogan, "Frase do cabeçalho", false, 80) ?? "",
+    rodape: texto(b.rodape, "Rodapé", false, 400) ?? "",
     cidade: texto(b.cidade, "Cidade", true, 80)!,
     destinatario: texto(b.destinatario, "Destinatário (A/C)", true, 80)!,
-    incluirTextoNormaPadrao: b.incluirTextoNormaPadrao !== false,
+    incluirTextoNormaPadrao: b.incluirTextoNormaPadrao === true,
+    termoSecaoRegulamento: b.termoSecaoRegulamento === "Artigo" ? "Artigo" : "tópico",
     responsavelNome: texto(b.responsavelNome, "Responsável", false, 120) ?? "",
     responsavelCargo: texto(b.responsavelCargo, "Cargo", false, 120) ?? "",
   };

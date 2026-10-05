@@ -18,6 +18,7 @@ interface Demo {
   lote: string;
   principal?: string;
   complementar?: string;
+  complemento?: string;
   status: StatusOcorrencia;
 }
 
@@ -29,6 +30,7 @@ const DEMOS: Demo[] = [
   { diasAtras: 12, horario: "10:30", ocorrencia: "Entulho em área comum", nome: "Fernanda Castro", tratamento: "Proprietária", quadra: "18", lote: "02", principal: "RI-III-11", complementar: "ES-11-a", status: "REGISTRADA" },
   { diasAtras: 6, horario: "07:45", ocorrencia: "Cachorro solto sem guia", descricao: "Animal circulando solto na alameda, sem acompanhamento do responsável.", nome: "Paulo Roberto Dias", tratamento: "Morador", quadra: "09", lote: "11", principal: "RI-III-4", status: "REGISTRADA" },
   { diasAtras: 3, horario: "15:20", ocorrencia: "Piscina suja", descricao: "Água parada e escura na piscina da residência.", nome: "Luciana Teixeira", tratamento: "Associada", quadra: "22", lote: "15", status: "AGUARDANDO_ANALISE" },
+  { diasAtras: 2, horario: "18:20", ocorrencia: "Menor conduzindo veículo", nome: "Antônio Carlos Ferreira", tratamento: "Associado", quadra: "27", lote: "05", principal: "RI-III-8", complemento: "ao deixar conduzir o veículo, sendo constatado que o condutor era menor de idade", status: "REGISTRADA" },
   { diasAtras: 1, horario: "22:40", ocorrencia: "Som alto", nome: "Ricardo Nunes", tratamento: "Visitante", quadra: "03", lote: "06", principal: "RI-II-8", status: "REGISTRADA" },
   { diasAtras: 0, horario: "14:40", ocorrencia: "Perturbação de sossego", nome: "Cristiane Fregonezi", tratamento: "Associada", quadra: "09", lote: "08", principal: "RI-II-8", status: "REGISTRADA" },
 ];
@@ -52,13 +54,14 @@ export function ocorrenciasDemonstrativas(normas: Norma[] = NORMAS_ORIGINAIS): O
       horario: d.horario,
       ocorrencia: d.ocorrencia,
       descricao: d.descricao,
+      complemento: d.complemento,
       nome: d.nome,
       tratamento: d.tratamento,
       quadra: d.quadra,
       lote: d.lote,
       fundamentacaoPrincipal: p ? { ...criarSnapshot(p, "AUTOMATICA", "ALTA"), confirmadoEm: instante } : undefined,
       fundamentacaoComplementar: c ? { ...criarSnapshot(c, "MANUAL"), confirmadoEm: instante } : undefined,
-      incluirTextoNorma: true,
+      incluirTextoNorma: false,
       status: d.status,
       criadoEm: instante,
       atualizadoEm: instante,

@@ -174,6 +174,19 @@ render.yaml                    Blueprint do Render
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · PostgreSQL (`pg`) · jsPDF
 
+## Modelo do relatório
+
+O relatório (tela, impressão e PDF) segue o modelo oficial da portaria (`MODELO_MENOR_CONDUTOR.doc`):
+
+- **Cabeçalho**: FAZENDA DA ILHA, CNPJ 59.039.586/0001-40, logo e “Onde morar é viver!”
+- **Corpo**: data por extenso, A/C: ADM, protocolo, ocorrência, nome, Q/L, horas e o parágrafo
+- **Complemento do texto** (opcional): o relato do fato, inserido logo após a citação. Exemplo:
+  > Informo que o associado citado acima descumpriu o Item 8 do tópico III – DAS PROIBIÇÕES do Regulamento Interno ao deixar conduzir o veículo, sendo constatado que o condutor era menor de idade.
+- **Assinatura**: nome e cargo do responsável (padrão: Michael Martins, Líder Operacional)
+- **Rodapé**: endereço, telefones e site da Associação
+
+Todos esses dados podem ser alterados em **Configurações**. Lá também é possível escolher como as seções do Regulamento são citadas: "Item 8 do **tópico** III" (padrão) ou "Item 8 do **Artigo** III", como no modelo antigo.
+
 ## Logo
 
-O cabeçalho usa `public/logo.png` quando existe. Caso contrário, usa a versão vetorial `public/logo.svg`. Para usar o logo oficial, salve o arquivo como `public/logo.png`.
+O logo oficial (`public/logo.png`) foi extraído do modelo de relatório da portaria. A versão vetorial `public/logo.svg` é usada somente se o PNG não existir.

@@ -36,7 +36,7 @@ export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
   const ML = 22; // margem esquerda
   const MR = 22;
   const LARG = 210 - ML - MR;
-  const LIMITE = 297 - 22;
+  const LIMITE = 297 - 24; // acima do rodapé
   let y = 20;
 
   const novaPaginaSe = (altura: number) => {
@@ -63,25 +63,38 @@ export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
     y += opts.espacoDepois ?? 0;
   };
 
-  // Cabeçalho
+  // Cabeçalho (modelo oficial): nome e CNPJ à esquerda, logo à direita, slogan abaixo
   const logo = await carregarLogo();
-  if (logo) doc.addImage(logo, "PNG", ML, y - 4, 18, 18);
-  const xTitulo = logo ? ML + 22 : ML;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
+  doc.setFontSize(15);
   doc.setTextColor(11, 71, 64);
-  const titulo: string[] = doc.splitTextToSize(r.cabecalhoAssociacao.toUpperCase(), LARG - (xTitulo - ML));
-  doc.text(titulo, xTitulo, y + 2);
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(9);
-  doc.setTextColor(90, 90, 90);
-  doc.text("Onde morar é viver!", xTitulo, y + 2 + titulo.length * 4.6);
+  doc.text(r.nomeCabecalho, ML, y + 4);
+  if (r.cnpj) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`CNPJ ${r.cnpj}`, ML, y + 10);
+  }
+  let alturaLogo = 0;
+  if (logo) {
+    const props = doc.getImageProperties(logo);
+    alturaLogo = 22;
+    const larguraLogo = (props.width / props.height) * alturaLogo;
+    doc.addImage(logo, "PNG", 210 - MR - larguraLogo, y - 4, larguraLogo, alturaLogo);
+  }
+  y += Math.max(alturaLogo - 4, 12) + 4;
+  if (r.slogan) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`“${r.slogan.replace(/[“”"]/g, "")}”`, 210 - MR, y, { align: "right" });
+  }
   doc.setTextColor(0, 0, 0);
-  y += 17;
+  y += 3;
   doc.setDrawColor(11, 71, 64);
   doc.setLineWidth(0.6);
   doc.line(ML, y, 210 - MR, y);
-  y += 12;
+  y += 11;
 
   paragrafo(r.localData, { espacoDepois: 6 });
   paragrafo(r.destinatario);
@@ -103,42 +116,44 @@ export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
     y += 4;
   }
 
-  // Observações e assinaturas (espaço reservado)
-  const alturaObs = 55;
-  novaPaginaSe(alturaObs + 40);
-  y += 4;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("Observações / providências da Administração:", ML, y);
-  y += 2;
-  doc.setDrawColor(120, 120, 120);
-  doc.setLineWidth(0.3);
-  doc.rect(ML, y, LARG, alturaObs);
   if (r.observacoes) {
-    doc.setFont("helvetica", "normal");
-    doc.text(doc.splitTextToSize(r.observacoes, LARG - 6), ML + 3, y + 6);
+    paragrafo("Observações:", { tamanho: 10.5, estilo: "bold" });
+    paragrafo(r.observacoes, { tamanho: 10.5, justificar: true, espacoDepois: 4 });
   }
-  y += alturaObs + 26;
 
-  const largAss = 70;
-  doc.setDrawColor(60, 60, 60);
-  doc.line(ML, y, ML + largAss, y);
-  doc.line(210 - MR - largAss, y, 210 - MR, y);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(r.responsavelNome || "Responsável pelo registro", ML + largAss / 2, y + 5, { align: "center" });
-  if (r.responsavelCargo) doc.text(r.responsavelCargo, ML + largAss / 2, y + 10, { align: "center" });
-  doc.text("Administração", 210 - MR - largAss / 2, y + 5, { align: "center" });
+  // Assinatura: fica na parte inferior da página, deixando espaço livre acima
+  const ALTURA_ASSINATURA = 14;
+  const yAssinatura = LIMITE - ALTURA_ASSINATURA;
+  if (y + 40 > yAssinatura) {
+    doc.addPage();
+    y = 22;
+  }
+  const largAss = 85;
+  const xAss = (210 - largAss) / 2;
+  doc.setDrawColor(40, 40, 40);
+  doc.setLineWidth(0.3);
+  doc.line(xAss, yAssinatura, xAss + largAss, yAssinatura);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(r.responsavelNome || "Responsável pelo registro", 105, yAssinatura + 5, { align: "center" });
+  if (r.responsavelCargo) {
+    doc.setFont("helvetica", "normal");
+    doc.text(r.responsavelCargo, 105, yAssinatura + 10.5, { align: "center" });
+  }
 
-  // Rodapé
+  // Rodapé com endereço e contato (todas as páginas)
   const paginas = doc.getNumberOfPages();
   for (let p = 1; p <= paginas; p++) {
     doc.setPage(p);
+    doc.setDrawColor(11, 71, 64);
+    doc.setLineWidth(0.4);
+    doc.line(ML, 280, 210 - MR, 280);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Protocolo ${r.protocolo}`, ML, 289);
-    doc.text(`Página ${p} de ${paginas}`, 210 - MR, 289, { align: "right" });
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    if (r.rodape) doc.text(doc.splitTextToSize(r.rodape, LARG), 105, 284, { align: "center" });
+    if (paginas > 1) doc.text(`Página ${p} de ${paginas}`, 210 - MR, 293, { align: "right" });
+    doc.setTextColor(0, 0, 0);
   }
 
   doc.save(nomeArquivo);

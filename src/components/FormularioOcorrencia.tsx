@@ -14,6 +14,7 @@ import {
   type Norma,
   type Ocorrencia,
   type StatusOcorrencia,
+  type TermoSecao,
   type Tratamento,
 } from "@/lib/types";
 import { NormaDetalhe } from "./NormaDetalhe";
@@ -31,6 +32,7 @@ interface Props {
   /** Ocorrência de origem (duplicação): copia os dados, com nova data e novo protocolo. */
   modelo?: Ocorrencia;
   incluirTextoPadrao: boolean;
+  termoSecao: TermoSecao;
 }
 
 const EXIGE_GENERO: Tratamento[] = ["Visitante", "Outro"];
@@ -40,7 +42,7 @@ function agoraHHMM() {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao }: Props) {
+export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, termoSecao }: Props) {
   const router = useRouter();
   const base = existente ?? modelo;
   const data = existente?.data ?? hojeISO();
@@ -55,6 +57,7 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao }: 
   const [lote, setLote] = useState(base?.lote ?? "");
   const [horario, setHorario] = useState(existente?.horario ?? "");
   const [observacoes, setObservacoes] = useState(existente?.observacoes ?? "");
+  const [complemento, setComplemento] = useState(base?.complemento ?? "");
   const [status, setStatus] = useState<StatusOcorrencia>(existente?.status ?? "REGISTRADA");
   const [incluirTexto, setIncluirTexto] = useState(base?.incluirTextoNorma ?? incluirTextoPadrao);
 
@@ -140,6 +143,7 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao }: 
       horario,
       ocorrencia: ocorrencia.trim(),
       descricao: descricao.trim() || undefined,
+      complemento: encaminharAnalise ? undefined : complemento.trim() || undefined,
       nome: nome.trim(),
       tratamento: tratamento as Tratamento,
       genero: EXIGE_GENERO.includes(tratamento as Tratamento) && genero ? genero : undefined,
@@ -170,7 +174,8 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao }: 
           tratamentoOutro,
           fundamentacaoPrincipal: principal.snapshot,
           fundamentacaoComplementar: complementar?.snapshot,
-        })
+          complemento,
+        }, termoSecao)
       : "";
 
   const sugerida = analise?.complementarSugerida;
@@ -391,6 +396,19 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao }: 
       {etapaFundamentacao && (
         <Cartao titulo="3. Relatório">
           <div className="space-y-4">
+            {principal && (
+              <Campo
+                rotulo="Complemento do texto (opcional)"
+                ajuda="Como a regra foi descumprida. É inserido logo após a citação da regra. Sem complemento, o texto termina com “conforme ocorrência descrita acima”."
+              >
+                <Entrada
+                  value={complemento}
+                  onChange={(e) => setComplemento(e.target.value)}
+                  maxLength={600}
+                  placeholder="Ex.: ao deixar conduzir o veículo, sendo constatado que o condutor era menor de idade"
+                />
+              </Campo>
+            )}
             {previa && (
               <div>
                 <div className="mb-1 text-sm font-medium text-gray-500">Prévia do texto</div>

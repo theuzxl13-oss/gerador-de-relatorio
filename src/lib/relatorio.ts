@@ -1,4 +1,5 @@
-import type { Configuracoes, FundamentacaoSnapshot, Genero, Ocorrencia, Tratamento } from "./types";
+import { citacaoCompleta } from "./citacao";
+import type { Configuracoes, FundamentacaoSnapshot, Genero, Ocorrencia, TermoSecao, Tratamento } from "./types";
 
 export const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -61,17 +62,34 @@ export function textoQuadraLote(quadra: string, lote: string): string {
   return `Q=${fmt(quadra)} L=${fmt(lote)}`;
 }
 
-/** Parágrafo principal do relatório. Nunca cita norma que não esteja vinculada à ocorrência. */
-export function paragrafoPrincipal(o: Pick<Ocorrencia, "tratamento" | "genero" | "tratamentoOutro" | "fundamentacaoPrincipal" | "fundamentacaoComplementar">): string {
+type DadosParagrafo = Pick<
+  Ocorrencia,
+  "tratamento" | "genero" | "tratamentoOutro" | "fundamentacaoPrincipal" | "fundamentacaoComplementar" | "complemento"
+>;
+
+/** Limpa o complemento digitado: sem vírgula inicial nem ponto final. */
+export function normalizarComplemento(c?: string): string {
+  return (c ?? "").trim().replace(/^[,;\s]+/, "").replace(/[.\s]+$/, "");
+}
+
+/**
+ * Parágrafo principal do relatório. Nunca cita norma que não esteja vinculada à ocorrência.
+ *   sem complemento: "Informo que o associado citado acima descumpriu o Item 8 do tópico III – DAS PROIBIÇÕES
+ *                     do Regulamento Interno, conforme ocorrência descrita acima."
+ *   com complemento: "... do Regulamento Interno ao deixar conduzir o veículo, sendo constatado que o condutor
+ *                     era menor de idade."
+ */
+export function paragrafoPrincipal(o: DadosParagrafo, termoSecao: TermoSecao = "tópico"): string {
   const quem = sujeito(o.tratamento, o.genero, o.tratamentoOutro);
   if (!o.fundamentacaoPrincipal) {
     return `Informo a ocorrência descrita acima, envolvendo ${quem}, a qual é encaminhada para análise da Administração para definição da fundamentação aplicável.`;
   }
-  let texto = `Informo que ${quem} descumpriu o ${o.fundamentacaoPrincipal.citacao}`;
+  let texto = `Informo que ${quem} descumpriu o ${citacaoCompleta(o.fundamentacaoPrincipal, termoSecao)}`;
   if (o.fundamentacaoComplementar) {
-    texto += `, bem como o ${o.fundamentacaoComplementar.citacao}`;
+    texto += `, bem como o ${citacaoCompleta(o.fundamentacaoComplementar, termoSecao)}`;
   }
-  return `${texto}, conforme ocorrência descrita acima.`;
+  const complemento = normalizarComplemento(o.complemento);
+  return complemento ? `${texto} ${complemento}.` : `${texto}, conforme ocorrência descrita acima.`;
 }
 
 export interface BlocoFundamentacao {
@@ -80,19 +98,25 @@ export interface BlocoFundamentacao {
   texto: string;
 }
 
-export function blocosFundamentacao(o: Pick<Ocorrencia, "fundamentacaoPrincipal" | "fundamentacaoComplementar">): BlocoFundamentacao[] {
+export function blocosFundamentacao(
+  o: Pick<Ocorrencia, "fundamentacaoPrincipal" | "fundamentacaoComplementar">,
+  termoSecao: TermoSecao = "tópico",
+): BlocoFundamentacao[] {
   const blocos: BlocoFundamentacao[] = [];
   const add = (titulo: string, f?: FundamentacaoSnapshot) => {
-    if (f) blocos.push({ titulo, citacao: f.citacao, texto: f.texto });
+    if (f) blocos.push({ titulo, citacao: citacaoCompleta(f, termoSecao), texto: f.texto });
   };
   add(o.fundamentacaoComplementar ? "Fundamentação principal" : "Fundamentação", o.fundamentacaoPrincipal);
   add("Fundamentação complementar", o.fundamentacaoComplementar);
   return blocos;
 }
 
-/** Estrutura completa do relatório, usada pela tela, pela impressão e pelo PDF. */
+/** Estrutura completa do relatório, usada pela tela, pela impressão e pelo PDF (segue o modelo oficial). */
 export interface ConteudoRelatorio {
-  cabecalhoAssociacao: string;
+  nomeCabecalho: string;
+  cnpj: string;
+  slogan: string;
+  rodape: string;
   localData: string;
   destinatario: string;
   protocolo: string;
@@ -108,8 +132,12 @@ export interface ConteudoRelatorio {
 }
 
 export function montarRelatorio(o: Ocorrencia, cfg: Configuracoes): ConteudoRelatorio {
+  const termo = cfg.termoSecaoRegulamento ?? "tópico";
   return {
-    cabecalhoAssociacao: cfg.nomeAssociacao,
+    nomeCabecalho: cfg.nomeCabecalho,
+    cnpj: cfg.cnpj,
+    slogan: cfg.slogan,
+    rodape: cfg.rodape,
     localData: linhaLocalData(cfg.cidade, o.data),
     destinatario: `A/C: ${cfg.destinatario}`,
     protocolo: o.protocolo,
@@ -119,9 +147,9 @@ export function montarRelatorio(o: Ocorrencia, cfg: Configuracoes): ConteudoRela
     ],
     quadraLote: textoQuadraLote(o.quadra, o.lote),
     horas: o.horario,
-    paragrafo: paragrafoPrincipal(o),
+    paragrafo: paragrafoPrincipal(o, termo),
     descricao: o.descricao?.trim() || undefined,
-    fundamentacoes: o.incluirTextoNorma ? blocosFundamentacao(o) : [],
+    fundamentacoes: o.incluirTextoNorma ? blocosFundamentacao(o, termo) : [],
     observacoes: o.observacoes?.trim() || undefined,
     responsavelNome: cfg.responsavelNome || undefined,
     responsavelCargo: cfg.responsavelCargo || undefined,

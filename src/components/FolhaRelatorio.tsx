@@ -1,16 +1,24 @@
 import type { ConteudoRelatorio } from "@/lib/relatorio";
 import { Logo } from "./Logo";
 
-/** Relatório em formato de folha A4 (visualização e impressão). */
+/**
+ * Relatório em folha A4 (visualização e impressão), no layout do modelo
+ * oficial da Fazenda da Ilha: cabeçalho com nome, CNPJ, logo e slogan;
+ * corpo; assinatura do responsável; rodapé com endereço e contato.
+ */
 export function FolhaRelatorio({ r }: { r: ConteudoRelatorio }) {
   return (
     <article className="folha-a4 mx-auto flex flex-col border border-gray-200 shadow-md">
-      <header className="mb-8 flex items-center gap-4 border-b-2 border-marca-800 pb-3">
-        <Logo className="h-16 w-16 shrink-0" />
-        <div className="leading-snug">
-          <div className="text-[10.5pt] font-bold uppercase text-marca-800">{r.cabecalhoAssociacao}</div>
-          <div className="text-[9pt] italic text-gray-600">Onde morar é viver!</div>
+      <header className="mb-8">
+        <div className="flex items-start justify-between gap-4">
+          <div className="pt-2 leading-snug">
+            <div className="text-[15pt] font-bold tracking-wide text-marca-800">{r.nomeCabecalho}</div>
+            {r.cnpj && <div className="text-[10pt] text-gray-700">CNPJ {r.cnpj}</div>}
+          </div>
+          <Logo className="h-[22mm] w-auto shrink-0" />
         </div>
+        {r.slogan && <div className="mt-1 text-right text-[10pt] italic text-gray-700">“{r.slogan.replace(/[“”"]/g, "")}”</div>}
+        <div className="mt-2 border-b-2 border-marca-800" />
       </header>
 
       <p className="mb-6">{r.localData}</p>
@@ -38,22 +46,24 @@ export function FolhaRelatorio({ r }: { r: ConteudoRelatorio }) {
         </div>
       ))}
 
-      <div className="mt-6 flex-1 break-inside-avoid">
-        <p className="mb-1 text-[10pt] font-semibold">Observações / providências da Administração:</p>
-        <div className="min-h-[55mm] rounded border border-gray-400 p-3 text-[10pt]">
-          {r.observacoes && <p className="whitespace-pre-line">{r.observacoes}</p>}
+      {r.observacoes && (
+        <div className="mb-4 break-inside-avoid text-[10.5pt]">
+          <p className="font-semibold">Observações:</p>
+          <p className="whitespace-pre-line text-justify">{r.observacoes}</p>
         </div>
+      )}
+
+      {/* Espaço livre para observações manuscritas e demais procedimentos administrativos */}
+      <div className="min-h-[45mm] flex-1" />
+
+      <div className="mx-auto w-[85mm] break-inside-avoid text-center text-[11pt]">
+        <div className="border-t border-gray-800 pt-1 font-semibold">{r.responsavelNome || "Responsável pelo registro"}</div>
+        {r.responsavelCargo && <div>{r.responsavelCargo}</div>}
       </div>
 
-      <div className="mt-14 grid grid-cols-2 gap-10 break-inside-avoid text-center text-[10pt]">
-        <div>
-          <div className="border-t border-gray-700 pt-1">{r.responsavelNome || "Responsável pelo registro"}</div>
-          {r.responsavelCargo && <div className="text-gray-600">{r.responsavelCargo}</div>}
-        </div>
-        <div>
-          <div className="border-t border-gray-700 pt-1">Administração</div>
-        </div>
-      </div>
+      {r.rodape && (
+        <footer className="mt-10 border-t border-marca-800 pt-2 text-center text-[8pt] leading-snug text-gray-600">{r.rodape}</footer>
+      )}
     </article>
   );
 }

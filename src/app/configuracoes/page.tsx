@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api-cliente";
 import { hojeISO, linhaLocalData } from "@/lib/relatorio";
 import type { Configuracoes } from "@/lib/types";
-import { Aviso, Botao, Campo, Carregando, Cartao, Entrada } from "@/components/ui";
+import { AreaTexto, Aviso, Botao, Campo, Carregando, Cartao, Entrada, Selecao } from "@/components/ui";
+import type { TermoSecao } from "@/lib/types";
 
 export default function PaginaConfiguracoes() {
   const [cfg, setCfg] = useState<Configuracoes | null>(null);
@@ -54,22 +55,49 @@ export default function PaginaConfiguracoes() {
 
       {mensagem && <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso>}
 
-      <Cartao titulo="Relatório">
+      <Cartao titulo="Cabeçalho e rodapé do relatório">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Campo rotulo="Nome da associação (cabeçalho)" obrigatorio className="sm:col-span-2">
+          <Campo rotulo="Nome no cabeçalho" obrigatorio>
+            <Entrada value={cfg.nomeCabecalho} onChange={(e) => set("nomeCabecalho", e.target.value)} />
+          </Campo>
+          <Campo rotulo="CNPJ">
+            <Entrada value={cfg.cnpj} onChange={(e) => set("cnpj", e.target.value)} />
+          </Campo>
+          <Campo rotulo="Frase do cabeçalho">
+            <Entrada value={cfg.slogan} onChange={(e) => set("slogan", e.target.value)} />
+          </Campo>
+          <Campo rotulo="Nome completo da associação" obrigatorio>
             <Entrada value={cfg.nomeAssociacao} onChange={(e) => set("nomeAssociacao", e.target.value)} />
           </Campo>
+          <Campo rotulo="Rodapé (endereço, contato e site)" className="sm:col-span-2">
+            <AreaTexto rows={2} value={cfg.rodape} onChange={(e) => set("rodape", e.target.value)} />
+          </Campo>
+        </div>
+      </Cartao>
+
+      <Cartao titulo="Texto do relatório">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Campo rotulo="Cidade" obrigatorio ajuda={`Exemplo: ${linhaLocalData(cfg.cidade || "Cidade", hojeISO())}`}>
             <Entrada value={cfg.cidade} onChange={(e) => set("cidade", e.target.value)} />
           </Campo>
           <Campo rotulo="Destinatário (A/C)" obrigatorio ajuda={`Aparece como "A/C: ${cfg.destinatario}"`}>
             <Entrada value={cfg.destinatario} onChange={(e) => set("destinatario", e.target.value)} />
           </Campo>
-          <Campo rotulo="Responsável pelo registro (assinatura)" ajuda="Opcional. Em branco: “Responsável pelo registro”.">
+          <Campo rotulo="Assinatura – nome" ajuda="Em branco: “Responsável pelo registro”.">
             <Entrada value={cfg.responsavelNome} onChange={(e) => set("responsavelNome", e.target.value)} />
           </Campo>
-          <Campo rotulo="Cargo do responsável">
+          <Campo rotulo="Assinatura – cargo">
             <Entrada value={cfg.responsavelCargo} onChange={(e) => set("responsavelCargo", e.target.value)} />
+          </Campo>
+          <Campo
+            rotulo="Como citar as seções do Regulamento"
+            className="sm:col-span-2"
+            ajuda={`Exemplo: “Item 8 do ${cfg.termoSecaoRegulamento} III – DAS PROIBIÇÕES do Regulamento Interno”`}
+          >
+            <Selecao value={cfg.termoSecaoRegulamento} onChange={(e) => set("termoSecaoRegulamento", e.target.value as TermoSecao)}>
+              <option value="tópico">Item 8 do tópico III – DAS PROIBIÇÕES</option>
+              <option value="Artigo">Item 8 do Artigo III – DAS PROIBIÇÕES (como no modelo antigo)</option>
+            </Selecao>
           </Campo>
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <input type="checkbox" className="h-4 w-4 accent-marca-700" checked={cfg.incluirTextoNormaPadrao} onChange={(e) => set("incluirTextoNormaPadrao", e.target.checked)} />

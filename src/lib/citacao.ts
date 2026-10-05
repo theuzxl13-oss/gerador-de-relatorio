@@ -1,4 +1,4 @@
-import type { FundamentacaoSnapshot, Norma } from "./types";
+import type { FundamentacaoSnapshot, Norma, TermoSecao } from "./types";
 import { DOCUMENTO_NOME } from "./types";
 
 type Referencia = Pick<
@@ -17,14 +17,14 @@ type Referencia = Pick<
  *
  * A numeração do Estatuto e a do Regulamento nunca são misturadas.
  */
-export function citacaoCompleta(n: Referencia): string {
+export function citacaoCompleta(n: Referencia, termoSecao: TermoSecao = "tópico"): string {
   if (n.documento === "ESTATUTO") {
     const partes = [`Artigo ${n.artigo}`];
     if (n.alinea) partes.push(`alínea "${n.alinea}"`);
     if (n.paragrafo) partes.push(n.paragrafo);
     return `${partes.join(", ")}, do ${DOCUMENTO_NOME.ESTATUTO}`;
   }
-  const topico = `tópico ${n.secaoNumero} – ${n.secaoTitulo}`;
+  const topico = `${termoSecao} ${n.secaoNumero} – ${n.secaoTitulo}`;
   if (n.subitem && /^\d/.test(n.subitem)) return `Subitem ${n.subitem} do ${topico} do ${DOCUMENTO_NOME.REGULAMENTO}`;
   if (n.item) return `Item ${n.item} do ${topico} do ${DOCUMENTO_NOME.REGULAMENTO}`;
   return `${topico} do ${DOCUMENTO_NOME.REGULAMENTO}`;
