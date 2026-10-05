@@ -1,0 +1,27 @@
+# Blueprint do Render (https://render.com/docs/blueprint-spec)
+# Cria o serviço web. O banco de dados é externo (Neon – PostgreSQL gratuito
+# que não expira); informe a DATABASE_URL no painel do Render.
+services:
+  - type: web
+    name: fazenda-da-ilha-ocorrencias
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/saude
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TZ
+        value: America/Sao_Paulo
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_USUARIO
+        sync: false
+      - key: APP_SENHA
+        sync: false
+      - key: SEED_DEMO
+        value: "true"
+      - key: PERMITIR_RESTAURAR_DEMO
+        value: "true"
