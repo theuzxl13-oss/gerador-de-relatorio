@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ErroAcesso } from "./auth";
 import { ErroValidacao } from "./validacao";
+import { diagnosticarErroBanco } from "./diagnostico";
 
 /** Envolve um handler de API com tratamento padronizado de erros. */
 export async function responder<T>(fn: () => Promise<T>, status = 200) {
@@ -10,8 +11,8 @@ export async function responder<T>(fn: () => Promise<T>, status = 200) {
   } catch (e) {
     if (e instanceof ErroValidacao) return NextResponse.json({ erro: e.message }, { status: 400 });
     if (e instanceof ErroAcesso) return NextResponse.json({ erro: e.message }, { status: e.status });
-    console.error(e);
-    return NextResponse.json({ erro: "Erro interno ao acessar o banco de dados." }, { status: 500 });
+    console.error("[api]", e);
+    return NextResponse.json({ erro: `Erro ao acessar o banco de dados. ${diagnosticarErroBanco(e)}` }, { status: 500 });
   }
 }
 

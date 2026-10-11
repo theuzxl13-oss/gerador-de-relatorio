@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { conferirSenha, garantirAdministradorInicial } from "@/server/auth";
 import { repositorio } from "@/server/db";
+import { diagnosticarErroBanco } from "@/server/diagnostico";
 import { COOKIE_SESSAO, DURACAO_SESSAO_SEGUNDOS, criarToken } from "@/lib/sessao";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
     });
     return resp;
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ erro: "Erro ao acessar o banco de dados." }, { status: 500 });
+    console.error("[login]", e);
+    return NextResponse.json({ erro: `Erro ao acessar o banco de dados. ${diagnosticarErroBanco(e)}` }, { status: 500 });
   }
 }

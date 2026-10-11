@@ -107,6 +107,17 @@ As tabelas são criadas **automaticamente** no primeiro acesso ao sistema. Não 
 | `PERMITIR_RESTAURAR_DEMO` | Não | `false` desativa o botão que apaga as ocorrências e recria a demonstração. **Use `false` quando o sistema estiver em uso real** |
 | `NODE_VERSION` | Não | `22` |
 
+### Diagnóstico do banco
+
+Abra **`https://SEU-ENDERECO.onrender.com/api/saude`** no navegador (não precisa de login):
+
+- `{"ok":true,"armazenamento":"postgres",...}`: banco conectado.
+- `{"ok":false,"erro":"..."}`: a mensagem explica a causa (senha errada, endereço errado, projeto do Supabase pausado, conexão direta IPv6 do Supabase etc.).
+
+A mesma explicação aparece na tela quando uma operação falha por causa do banco.
+
+**Supabase:** use a string de conexão do **Session pooler** (`aws-0-...pooler.supabase.com`), e não a "Direct connection" (`db.xxxx.supabase.co`), que usa IPv6 e não funciona no Render. Lembre que o Supabase gratuito pausa o projeto após 7 dias sem uso.
+
 ### Observações sobre o plano gratuito do Render
 
 - O serviço **"dorme" após 15 minutos sem acesso**. O primeiro acesso depois disso leva de 30 a 60 segundos. Os dados não se perdem, porque ficam no Neon.

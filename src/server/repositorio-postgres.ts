@@ -64,9 +64,23 @@ create table if not exists configuracoes (
 );
 `;
 
-function precisaSSL(url: string): boolean {
-  if (/sslmode=disable/.test(url)) return false;
-  return !/@(localhost|127\.0\.0\.1|postgres)(:|\/)/.test(url);
+/**
+ * Prepara a conexão: remove da URL os parâmetros de SSL (sslmode, channel_binding...)
+ * e aplica SSL criptografado sem exigir certificado de autoridade pública.
+ * Necessário para o Supabase (certificado próprio) e compatível com o Neon.
+ */
+export function configurarConexao(url: string): { connectionString: string; ssl?: { rejectUnauthorized: false } } {
+  let u: URL;
+  try {
+    u = new URL(url.trim());
+  } catch {
+    return { connectionString: url.trim() };
+  }
+  const sslmode = u.searchParams.get("sslmode");
+  for (const p of ["sslmode", "channel_binding", "sslrootcert", "sslcert", "sslkey", "uselibpqcompat", "sslnegotiation"]) u.searchParams.delete(p);
+  const local = ["localhost", "127.0.0.1", "postgres"].includes(u.hostname);
+  const usarSSL = sslmode !== "disable" && !local;
+  return { connectionString: u.toString(), ssl: usarSSL ? { rejectUnauthorized: false } : undefined };
 }
 
 export class RepositorioPostgres implements Repositorio {
@@ -76,10 +90,14 @@ export class RepositorioPostgres implements Repositorio {
 
   constructor(url: string) {
     this.pool = new Pool({
-      connectionString: url,
-      ssl: precisaSSL(url) ? { rejectUnauthorized: false } : undefined,
+      ...configurarConexao(url),
       max: 5,
+      // Neon/Supabase encerram conexões ociosas: libera antes e evita derrubar o servidor.
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 20_000,
+      keepAlive: true,
     });
+    this.pool.on("error", (e) => console.error("[banco] conexão ociosa encerrada pelo servidor:", e.message));
   }
 
   private iniciar(): Promise<void> {
@@ -95,7 +113,9 @@ export class RepositorioPostgres implements Repositorio {
   private async migrar() {
     const c = await this.pool.connect();
     try {
-      await c.query("select pg_advisory_lock(727001)");
+      // Trava por transação (funciona também no pooler em modo "transaction" do Supabase).
+      await c.query("begin");
+      await c.query("select pg_advisory_xact_lock(727001)");
       await c.query(SCHEMA_SQL);
       const { rows } = await c.query("select count(*)::int as n from normas");
       if (rows[0].n === 0) await this.inserirNormasOriginais(c);
@@ -105,8 +125,11 @@ export class RepositorioPostgres implements Repositorio {
         // Primeira execução: cria as ocorrências demonstrativas (pode ser desligado com SEED_DEMO=false).
         if (process.env.SEED_DEMO !== "false") await this.inserirDemonstracao(c);
       }
+      await c.query("commit");
+    } catch (e) {
+      await c.query("rollback").catch(() => undefined);
+      throw e;
     } finally {
-      await c.query("select pg_advisory_unlock(727001)").catch(() => undefined);
       c.release();
     }
   }
