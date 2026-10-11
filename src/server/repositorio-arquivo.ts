@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
-import { CONFIGURACOES_PADRAO, type Configuracoes, type Norma, type Ocorrencia } from "@/lib/types";
+import { CONFIGURACOES_PADRAO, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
 import type { NovoAnexo, NovaOcorrencia, Repositorio } from "./repositorio";
 
 interface AnexoArquivo {
@@ -22,6 +22,13 @@ interface Banco {
   sequencias: Record<string, number>;
   configuracoes: Configuracoes;
   anexos?: AnexoArquivo[];
+  usuarios?: UsuarioComSenha[];
+}
+
+function semSenha(u: UsuarioComSenha): Usuario {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { senhaHash, ...resto } = u;
+  return resto;
 }
 
 /**
@@ -207,6 +214,37 @@ export class RepositorioArquivo implements Repositorio {
       await this.removerAnexosDe(db);
       this.semear(db);
     }, true);
+  }
+
+  listarUsuarios() {
+    return this.exclusivo((db) => [...(db.usuarios ?? [])].sort((a, b) => a.nome.localeCompare(b.nome)).map(semSenha), false);
+  }
+
+  obterUsuario(id: string) {
+    return this.exclusivo((db) => (db.usuarios ?? []).find((u) => u.id === id) ?? null, false);
+  }
+
+  obterUsuarioPorLogin(login: string) {
+    const l = login.trim().toLowerCase();
+    return this.exclusivo((db) => (db.usuarios ?? []).find((u) => u.login.toLowerCase() === l) ?? null, false);
+  }
+
+  salvarUsuario(u: UsuarioComSenha) {
+    return this.exclusivo((db) => {
+      const lista = db.usuarios ?? [];
+      if (lista.some((x) => x.id !== u.id && x.login.toLowerCase() === u.login.toLowerCase())) {
+        throw new Error("login duplicado");
+      }
+      const i = lista.findIndex((x) => x.id === u.id);
+      if (i >= 0) lista[i] = u;
+      else lista.push(u);
+      db.usuarios = lista;
+      return semSenha(u);
+    }, true);
+  }
+
+  contarUsuarios() {
+    return this.exclusivo((db) => (db.usuarios ?? []).length, false);
   }
 
   obterConfiguracoes() {

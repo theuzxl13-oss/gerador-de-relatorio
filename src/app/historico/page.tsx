@@ -8,6 +8,7 @@ import { gerarPdf } from "@/lib/pdf";
 import { dataCurta, montarRelatorio } from "@/lib/relatorio";
 import { DOCUMENTO_NOME, STATUS_LABEL, type Configuracoes, type DocumentoTipo, type Ocorrencia, type StatusOcorrencia } from "@/lib/types";
 import { nomeArquivoPdf } from "@/components/VisualizarRelatorio";
+import { useEhAdmin } from "@/components/UsuarioContexto";
 import { Aviso, Botao, BotaoLink, Campo, Carregando, Entrada, SeloStatus, Selecao } from "@/components/ui";
 
 interface Filtros {
@@ -34,6 +35,7 @@ function fundamentacaoCurta(o: Ocorrencia) {
 }
 
 export default function Historico() {
+  const admin = useEhAdmin();
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[] | null>(null);
   const [cfg, setCfg] = useState<Configuracoes | null>(null);
   const [f, setF] = useState<Filtros>(VAZIO);
@@ -96,13 +98,13 @@ export default function Historico() {
   const Acoes = ({ o }: { o: Ocorrencia }) => (
     <div className="flex flex-wrap gap-1">
       <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}`}>Visualizar</Link>
-      <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}/editar`}>Editar</Link>
+      {admin && <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}/editar`}>Editar</Link>}
       <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}?imprimir=1`}>Imprimir</Link>
       <button type="button" className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50 disabled:opacity-50" disabled={gerandoPdf === o.id} onClick={() => pdf(o)}>
         {gerandoPdf === o.id ? "Gerando..." : "PDF"}
       </button>
       <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/nova?duplicar=${o.id}`}>Duplicar</Link>
-      <button type="button" className="rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => excluir(o)}>Excluir</button>
+      {admin && <button type="button" className="rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => excluir(o)}>Excluir</button>}
     </div>
   );
 

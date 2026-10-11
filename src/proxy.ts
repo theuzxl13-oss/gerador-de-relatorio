@@ -1,30 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { COOKIE_SESSAO, lerToken } from "@/lib/sessao";
 
 /**
- * Proteção de acesso por usuário e senha (HTTP Basic Auth).
- * Ativada quando as variáveis APP_USUARIO e APP_SENHA estão definidas
- * (recomendado no Render, pois o endereço do sistema é público).
+ * Exige login em todo o sistema. Sem sessão válida:
+ *  - páginas → redireciona para /login
+ *  - API     → 401
+ * As permissões por perfil (Administrador / Presença) são conferidas nas rotas da API.
  */
-export function proxy(req: NextRequest) {
-  const usuario = process.env.APP_USUARIO;
-  const senha = process.env.APP_SENHA;
-  if (!usuario || !senha) return NextResponse.next();
+export async function proxy(req: NextRequest) {
+  const sessao = await lerToken(req.cookies.get(COOKIE_SESSAO)?.value);
+  if (sessao) return NextResponse.next();
 
-  const auth = req.headers.get("authorization");
-  if (auth?.startsWith("Basic ")) {
-    try {
-      const [u, ...resto] = atob(auth.slice(6)).split(":");
-      if (u === usuario && resto.join(":") === senha) return NextResponse.next();
-    } catch {
-      // credencial malformada: cai no pedido de autenticação
-    }
+  if (req.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json({ erro: "Sessão expirada. Entre novamente." }, { status: 401 });
   }
-  return new NextResponse("Acesso restrito à Administração.", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Fazenda da Ilha - Ocorrencias", charset="UTF-8"' },
-  });
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  const destino = req.nextUrl.pathname + req.nextUrl.search;
+  if (destino !== "/") url.searchParams.set("voltar", destino);
+  return NextResponse.redirect(url);
 }
 
 export const config = {
-  matcher: ["/((?!api/saude|_next/static|_next/image|favicon.ico|logo).*)"],
+  matcher: ["/((?!login|api/auth/login|api/saude|_next/static|_next/image|favicon.ico|logo\\.png|logo\\.svg).*)"],
 };

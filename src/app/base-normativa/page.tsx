@@ -8,6 +8,7 @@ import { citacaoCompleta, rotuloDispositivo } from "@/lib/citacao";
 import { compararNormas } from "@/lib/ordenacao";
 import { DOCUMENTO_NOME, type DocumentoTipo, type Norma } from "@/lib/types";
 import { INTRODUCAO_DOCUMENTO, SECOES, caputSecao } from "@/data/normas";
+import { useEhAdmin } from "@/components/UsuarioContexto";
 import { AreaTexto, Aviso, Botao, Campo, Carregando, Entrada, Modal, Selecao } from "@/components/ui";
 
 const PARAGRAFO_ID: Record<string, string> = {
@@ -41,6 +42,7 @@ const novaNorma = (documento: DocumentoTipo): Norma => ({
 });
 
 export default function BaseNormativa() {
+  const admin = useEhAdmin();
   const [normas, setNormas] = useState<Norma[] | null>(null);
   const [documento, setDocumento] = useState<DocumentoTipo>("REGULAMENTO");
   const [busca, setBusca] = useState("");
@@ -102,13 +104,15 @@ export default function BaseNormativa() {
           <h1 className="text-2xl font-bold text-gray-900">Base normativa</h1>
           <p className="text-sm text-gray-600">Normas extraídas do Estatuto Social e do Regulamento Interno. Somente estas normas podem fundamentar relatórios.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Botao onClick={() => setEditando({ norma: novaNorma(documento), nova: true })}>+ Nova norma</Botao>
-          <Botao variante="secundario" onClick={restaurar}>Restaurar base original</Botao>
-        </div>
+        {admin && (
+          <div className="flex flex-wrap gap-2">
+            <Botao onClick={() => setEditando({ norma: novaNorma(documento), nova: true })}>+ Nova norma</Botao>
+            <Botao variante="secundario" onClick={restaurar}>Restaurar base original</Botao>
+          </div>
+        )}
       </div>
 
-      {pendentes > 0 && (
+      {admin && pendentes > 0 && (
         <Aviso tipo="alerta" titulo={`${pendentes} norma(s) com trecho sinalizado para revisão manual`}>
           O PDF original possui carimbos sobrepostos ao texto. Os trechos ilegíveis foram marcados e não foram completados por suposição.
           Confira no documento físico e corrija pelo botão “Editar”.{" "}
@@ -173,10 +177,12 @@ export default function BaseNormativa() {
                     {!n.ativo && <span className="rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-700">Inativa</span>}
                     {n.pagina && <span className="text-xs text-gray-400">pág. {n.pagina}</span>}
                   </div>
-                  <div className="flex gap-1">
-                    <Botao variante="fantasma" className="!px-2 !py-1 text-xs" onClick={() => setEditando({ norma: n, nova: false })}>Editar</Botao>
-                    <Botao variante="fantasma" className="!px-2 !py-1 text-xs !text-red-700 hover:!bg-red-50" onClick={() => excluir(n)}>Excluir</Botao>
-                  </div>
+                  {admin && (
+                    <div className="flex gap-1">
+                      <Botao variante="fantasma" className="!px-2 !py-1 text-xs" onClick={() => setEditando({ norma: n, nova: false })}>Editar</Botao>
+                      <Botao variante="fantasma" className="!px-2 !py-1 text-xs !text-red-700 hover:!bg-red-50" onClick={() => excluir(n)}>Excluir</Botao>
+                    </div>
+                  )}
                 </div>
                 <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-gray-800">{n.texto}</p>
                 {n.observacaoRevisao && <p className="mt-1 text-xs text-amber-700">⚠ {n.observacaoRevisao}</p>}

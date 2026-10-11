@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ErroAcesso } from "./auth";
 import { ErroValidacao } from "./validacao";
 
 /** Envolve um handler de API com tratamento padronizado de erros. */
@@ -8,6 +9,7 @@ export async function responder<T>(fn: () => Promise<T>, status = 200) {
     return NextResponse.json(dados ?? { ok: true }, { status });
   } catch (e) {
     if (e instanceof ErroValidacao) return NextResponse.json({ erro: e.message }, { status: 400 });
+    if (e instanceof ErroAcesso) return NextResponse.json({ erro: e.message }, { status: e.status });
     console.error(e);
     return NextResponse.json({ erro: "Erro interno ao acessar o banco de dados." }, { status: 500 });
   }

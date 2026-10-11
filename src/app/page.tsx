@@ -2,7 +2,8 @@ import Link from "next/link";
 import { repositorio } from "@/server/db";
 import { hojeISO, dataCurta } from "@/lib/relatorio";
 import { normalizar } from "@/lib/analysis/texto";
-import { SeloStatus } from "@/components/ui";
+import { Aviso, SeloStatus } from "@/components/ui";
+import { exigirPagina } from "@/server/pagina";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,11 @@ const ATALHOS = [
   { href: "/configuracoes", titulo: "Configurações", texto: "Dados do relatório e sistema", icone: "M12 8a4 4 0 100 8 4 4 0 000-8zM4 12h2M18 12h2M12 4v2M12 18v2" },
 ];
 
-export default async function Inicio() {
+export default async function Inicio({ searchParams }: { searchParams: Promise<{ "sem-permissao"?: string }> }) {
+  const usuario = await exigirPagina();
+  const semPermissao = (await searchParams)["sem-permissao"] === "1";
   const ocorrencias = await repositorio().listarOcorrencias();
+  const atalhos = ATALHOS.filter((a) => usuario.perfil === "ADMIN" || a.href !== "/configuracoes");
   const hoje = hojeISO();
   const mes = hoje.slice(0, 7);
 
@@ -34,13 +38,14 @@ export default async function Inicio() {
 
   return (
     <div className="space-y-6">
+      {semPermissao && <Aviso tipo="alerta">Esta área é restrita ao administrador.</Aviso>}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Painel de ocorrências</h1>
         <p className="text-sm text-gray-600">Registro de ocorrências e emissão de relatórios para a Administração.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {ATALHOS.map((a) => (
+        {atalhos.map((a) => (
           <Link
             key={a.href}
             href={a.href}
