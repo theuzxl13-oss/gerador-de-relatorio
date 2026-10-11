@@ -1,5 +1,4 @@
 import { repositorio } from "@/server/db";
-import { exigirUsuario } from "@/server/auth";
 import { responder } from "@/server/api";
 import { analisarOcorrencia } from "@/lib/analysis/engine";
 import { ErroValidacao } from "@/server/validacao";
@@ -14,7 +13,6 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   return responder(async () => {
-    await exigirUsuario();
     const ocorrencia = typeof b?.ocorrencia === "string" ? b.ocorrencia.trim() : "";
     if (!ocorrencia) throw new ErroValidacao("Informe a ocorrência.");
     const normas = await repositorio().listarNormas();

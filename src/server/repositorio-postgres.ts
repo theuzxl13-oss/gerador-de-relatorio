@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
-import { CONFIGURACOES_PADRAO, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
+import { CONFIGURACOES_PADRAO, type Configuracoes, type Norma, type Ocorrencia } from "@/lib/types";
 import type { NovoAnexo, NovaOcorrencia, Repositorio } from "./repositorio";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -49,14 +49,6 @@ create table if not exists anexos (
   criado_em     timestamptz not null default now()
 );
 create index if not exists anexos_ocorrencia_idx on anexos (ocorrencia_id);
-
-create table if not exists usuarios (
-  id            uuid primary key,
-  login         text not null,
-  dados         jsonb not null,
-  atualizado_em timestamptz not null default now()
-);
-create unique index if not exists usuarios_login_idx on usuarios (lower(login));
 
 create table if not exists configuracoes (
   id    integer primary key default 1 check (id = 1),
@@ -327,41 +319,6 @@ export class RepositorioPostgres implements Repositorio {
     }
   }
 
-  async listarUsuarios() {
-    await this.iniciar();
-    const { rows } = await this.pool.query("select dados from usuarios order by dados->>'nome'");
-    return rows.map((r) => semSenha(r.dados as UsuarioComSenha));
-  }
-
-  async obterUsuario(id: string) {
-    await this.iniciar();
-    if (!UUID.test(id)) return null;
-    const { rows } = await this.pool.query("select dados from usuarios where id = $1", [id]);
-    return (rows[0]?.dados as UsuarioComSenha) ?? null;
-  }
-
-  async obterUsuarioPorLogin(login: string) {
-    await this.iniciar();
-    const { rows } = await this.pool.query("select dados from usuarios where lower(login) = lower($1)", [login.trim()]);
-    return (rows[0]?.dados as UsuarioComSenha) ?? null;
-  }
-
-  async salvarUsuario(u: UsuarioComSenha) {
-    await this.iniciar();
-    await this.pool.query(
-      `insert into usuarios (id, login, dados) values ($1, $2, $3)
-       on conflict (id) do update set login = excluded.login, dados = excluded.dados, atualizado_em = now()`,
-      [u.id, u.login, u],
-    );
-    return semSenha(u);
-  }
-
-  async contarUsuarios() {
-    await this.iniciar();
-    const { rows } = await this.pool.query("select count(*)::int as n from usuarios");
-    return rows[0].n as number;
-  }
-
   async obterConfiguracoes() {
     await this.iniciar();
     const { rows } = await this.pool.query("select dados from configuracoes where id = 1");
@@ -377,10 +334,4 @@ export class RepositorioPostgres implements Repositorio {
     );
     return dados;
   }
-}
-
-function semSenha(u: UsuarioComSenha): Usuario {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { senhaHash, ...resto } = u;
-  return resto;
 }

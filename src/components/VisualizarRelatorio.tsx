@@ -7,7 +7,6 @@ import { gerarPdf } from "@/lib/pdf";
 import { montarRelatorio } from "@/lib/relatorio";
 import { DOCUMENTO_NOME, STATUS_LABEL, type Configuracoes, type Ocorrencia, type StatusOcorrencia } from "@/lib/types";
 import { FolhaRelatorio } from "./FolhaRelatorio";
-import { useEhAdmin } from "./UsuarioContexto";
 import { Aviso, Botao, BotaoLink, SeloConfianca, SeloStatus, Selecao } from "./ui";
 
 export function nomeArquivoPdf(o: Ocorrencia) {
@@ -17,7 +16,6 @@ export function nomeArquivoPdf(o: Ocorrencia) {
 
 export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInicial }: { ocorrencia: Ocorrencia; configuracoes: Configuracoes; novo?: boolean; acaoInicial?: "imprimir" | "pdf" }) {
   const router = useRouter();
-  const admin = useEhAdmin();
   const [o, setO] = useState(ocorrencia);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState("");
@@ -78,7 +76,7 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
             {gerando ? "Gerando..." : "Gerar PDF"}
           </Botao>
           <Botao variante="secundario" onClick={() => window.print()}>Imprimir</Botao>
-          {admin && <BotaoLink href={`/ocorrencias/${o.id}/editar`} variante="secundario">Editar</BotaoLink>}
+          <BotaoLink href={`/ocorrencias/${o.id}/editar`} variante="secundario">Editar</BotaoLink>
           <BotaoLink href={`/ocorrencias/nova?duplicar=${o.id}`} variante="secundario">Duplicar</BotaoLink>
         </div>
 
@@ -87,21 +85,14 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
             <span className="font-semibold">{o.protocolo ? `Protocolo ${o.protocolo}` : "Sem protocolo"}</span>
             <SeloStatus status={o.status} />
           </div>
-          {o.registradoPor && (
-            <p className="text-xs text-gray-500">
-              Registrada por <strong className="text-gray-700">{o.registradoPor.nome}</strong> em {new Date(o.criadoEm).toLocaleString("pt-BR")}
-            </p>
-          )}
-          {admin && (
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-gray-500">Alterar status</span>
-              <Selecao value={o.status} onChange={(e) => alterarStatus(e.target.value as StatusOcorrencia)}>
-                {Object.entries(STATUS_LABEL).map(([v, r]) => (
-                  <option key={v} value={v}>{r}</option>
-                ))}
-              </Selecao>
-            </label>
-          )}
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-gray-500">Alterar status</span>
+            <Selecao value={o.status} onChange={(e) => alterarStatus(e.target.value as StatusOcorrencia)}>
+              {Object.entries(STATUS_LABEL).map(([v, r]) => (
+                <option key={v} value={v}>{r}</option>
+              ))}
+            </Selecao>
+          </label>
           <div className="border-t border-gray-100 pt-3">
             <div className="mb-1 text-xs font-medium text-gray-500">Fundamentação vinculada (registro de auditoria)</div>
             {fundamentacoes.length === 0 ? (
@@ -124,7 +115,7 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
 
         <div className="flex justify-between">
           <BotaoLink href="/historico" variante="fantasma">← Histórico</BotaoLink>
-          {admin && <Botao variante="fantasma" className="!text-red-700 hover:!bg-red-50" onClick={excluir}>Excluir</Botao>}
+          <Botao variante="fantasma" className="!text-red-700 hover:!bg-red-50" onClick={excluir}>Excluir</Botao>
         </div>
       </aside>
 

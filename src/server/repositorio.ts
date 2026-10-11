@@ -1,4 +1,4 @@
-import type { AnexoInfo, Configuracoes, Norma, Ocorrencia, Usuario, UsuarioComSenha } from "@/lib/types";
+import type { AnexoInfo, Configuracoes, Norma, Ocorrencia } from "@/lib/types";
 
 export interface NovoAnexo {
   nome: string;
@@ -47,13 +47,6 @@ export interface Repositorio {
   /** Guarda uma foto ainda não vinculada; o vínculo ocorre ao salvar a ocorrência. */
   salvarAnexo(anexo: NovoAnexo): Promise<AnexoInfo>;
   obterAnexo(id: string): Promise<ArquivoAnexo | null>;
-
-  listarUsuarios(): Promise<Usuario[]>;
-  obterUsuario(id: string): Promise<UsuarioComSenha | null>;
-  obterUsuarioPorLogin(login: string): Promise<UsuarioComSenha | null>;
-  /** Cria ou atualiza (upsert pelo id). O login é único, sem diferenciar maiúsculas. */
-  salvarUsuario(u: UsuarioComSenha): Promise<Usuario>;
-  contarUsuarios(): Promise<number>;
 
   obterConfiguracoes(): Promise<Configuracoes>;
   salvarConfiguracoes(cfg: Configuracoes): Promise<Configuracoes>;

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { PERFIL_LABEL, type Usuario } from "@/lib/types";
 import { Logo } from "./Logo";
 
 const LINKS = [
@@ -11,19 +10,12 @@ const LINKS = [
   { href: "/ocorrencias/nova", rotulo: "Nova ocorrência" },
   { href: "/historico", rotulo: "Histórico" },
   { href: "/base-normativa", rotulo: "Base normativa" },
-  { href: "/usuarios", rotulo: "Usuários", admin: true },
-  { href: "/configuracoes", rotulo: "Configurações", admin: true },
+  { href: "/configuracoes", rotulo: "Configurações" },
 ];
 
-async function sair() {
-  await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-  window.location.href = "/login";
-}
-
-export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
+export function Cabecalho() {
   const caminho = usePathname();
   const [aberto, setAberto] = useState(false);
-  const links = usuario ? LINKS.filter((l) => !l.admin || usuario.perfil === "ADMIN") : [];
   const ativo = (href: string) => (href === "/" ? caminho === "/" : caminho.startsWith(href));
 
   return (
@@ -38,7 +30,7 @@ export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
         </Link>
 
         <nav className="ml-auto hidden items-center gap-1 lg:flex">
-          {links.map((l) => (
+          {LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
@@ -51,21 +43,9 @@ export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
           ))}
         </nav>
 
-        {usuario && (
-          <div className="hidden items-center gap-2 border-l border-white/15 pl-3 lg:flex">
-            <Link href="/minha-senha" className="max-w-[9rem] text-right leading-tight hover:underline" title="Trocar minha senha">
-              <span className="block truncate text-sm font-semibold">{usuario.nome}</span>
-              <span className="block text-xs text-marca-100">{PERFIL_LABEL[usuario.perfil]}</span>
-            </Link>
-            <button type="button" onClick={sair} className="rounded-md px-2.5 py-1.5 text-sm text-marca-100 hover:bg-white/10 hover:text-white">
-              Sair
-            </button>
-          </div>
-        )}
-
         <button
           type="button"
-          className={`ml-auto rounded-md p-2 hover:bg-white/10 lg:hidden ${usuario ? "" : "hidden"}`}
+          className="ml-auto rounded-md p-2 hover:bg-white/10 lg:hidden"
           aria-label="Abrir menu"
           aria-expanded={aberto}
           onClick={() => setAberto((v) => !v)}
@@ -78,7 +58,7 @@ export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
 
       {aberto && (
         <nav className="border-t border-white/10 px-4 pb-3 lg:hidden">
-          {links.map((l) => (
+          {LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
@@ -88,17 +68,6 @@ export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
               {l.rotulo}
             </Link>
           ))}
-          {usuario && (
-            <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-3">
-              <Link href="/minha-senha" onClick={() => setAberto(false)} className="px-3 text-sm">
-                <span className="font-semibold">{usuario.nome}</span>{" "}
-                <span className="text-marca-100">· {PERFIL_LABEL[usuario.perfil]} · trocar senha</span>
-              </Link>
-              <button type="button" onClick={sair} className="rounded-md px-3 py-2 text-sm font-medium hover:bg-white/10">
-                Sair
-              </button>
-            </div>
-          )}
         </nav>
       )}
     </header>

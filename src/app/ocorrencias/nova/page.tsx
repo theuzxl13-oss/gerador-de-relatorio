@@ -1,11 +1,9 @@
 import { FormularioOcorrencia } from "@/components/FormularioOcorrencia";
 import { repositorio } from "@/server/db";
-import { exigirPagina } from "@/server/pagina";
 
 export const dynamic = "force-dynamic";
 
 export default async function NovaOcorrencia({ searchParams }: { searchParams: Promise<{ duplicar?: string }> }) {
-  await exigirPagina();
   const { duplicar } = await searchParams;
   const repo = repositorio();
   const [cfg, modelo] = await Promise.all([repo.obterConfiguracoes(), duplicar ? repo.obterOcorrencia(duplicar) : Promise.resolve(null)]);

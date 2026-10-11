@@ -1,11 +1,9 @@
 import { repositorio } from "@/server/db";
-import { usuarioAtual } from "@/server/auth";
 import { naoEncontrado } from "@/server/api";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await usuarioAtual())) return naoEncontrado("Imagem não encontrada.");
   const { id } = await ctx.params;
   const a = await repositorio().obterAnexo(id).catch(() => null);
   if (!a) return naoEncontrado("Imagem não encontrada.");

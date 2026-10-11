@@ -18,7 +18,6 @@ services:
         value: America/Sao_Paulo
       - key: DATABASE_URL
         sync: false
-      # Login e senha do administrador inicial (os demais usuários são criados na tela Usuários)
       - key: APP_USUARIO
         sync: false
       - key: APP_SENHA

@@ -1,5 +1,4 @@
 import { repositorio } from "@/server/db";
-import { exigirUsuario } from "@/server/auth";
 import { responder } from "@/server/api";
 import { ErroValidacao } from "@/server/validacao";
 
@@ -15,7 +14,6 @@ const TAMANHO_MAXIMO = 4 * 1024 * 1024;
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   return responder(async () => {
-    await exigirUsuario();
     const tipo = String(b?.tipo ?? "");
     if (!TIPOS.includes(tipo)) throw new ErroValidacao("Formato de imagem não suportado. Use JPG, PNG ou WEBP.");
     const base64 = String(b?.dados ?? "").replace(/^data:[^,]+,/, "");

@@ -174,8 +174,6 @@ export interface Ocorrencia {
   observacoes?: string;
   /** Fotos/imagens do relatório, na ordem de exibição. */
   anexos?: AnexoInfo[];
-  /** Usuário que registrou a ocorrência no sistema (auditoria). */
-  registradoPor?: { id: string; nome: string };
   /** Quem assina o relatório (padrão: Configurações). */
   assinaturaNome?: string;
   assinaturaCargo?: string;
@@ -217,37 +215,3 @@ export const CONFIGURACOES_PADRAO: Configuracoes = {
   responsavelNome: "Michael Martins",
   responsavelCargo: "Líder Operacional",
 };
-
-// ───────────────────────────── Usuários e permissões ─────────────────────────────
-
-/**
- * ADMIN: acesso total (editar, excluir, base normativa, configurações, usuários).
- * PRESENCA: registra e consulta ocorrências; não edita nem exclui nada.
- */
-export type Perfil = "ADMIN" | "PRESENCA";
-
-export const PERFIL_LABEL: Record<Perfil, string> = {
-  ADMIN: "Administrador",
-  PRESENCA: "Presença",
-};
-
-export interface Usuario {
-  id: string;
-  nome: string;
-  login: string;
-  perfil: Perfil;
-  ativo: boolean;
-  criadoEm: string;
-  atualizadoEm: string;
-}
-
-/** Usuário com o hash da senha (somente no servidor). */
-export interface UsuarioComSenha extends Usuario {
-  senhaHash: string;
-}
-
-/** Quem registrou a ocorrência (auditoria). */
-export interface RegistradoPor {
-  id: string;
-  nome: string;
-}
