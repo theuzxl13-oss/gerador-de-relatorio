@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { cookies } from "next/headers";
-import { COOKIE_SESSAO, lerToken } from "@/lib/sessao";
+import { COOKIE_SESSAO, lerToken, marcaSenha } from "@/lib/sessao";
 import { pode, type Acao } from "@/lib/permissoes";
 import { PERFIL_LABEL, type Usuario, type UsuarioComSenha } from "@/lib/types";
 import { repositorio } from "./db";
@@ -25,6 +25,13 @@ export async function gerarHashSenha(senha: string): Promise<string> {
   return `scrypt$${sal.toString("base64")}$${hash.toString("base64")}`;
 }
 
+/** Hash fictício: o tempo de resposta é o mesmo para login inexistente e senha errada. */
+const HASH_FICTICIO = `scrypt$${Buffer.alloc(16).toString("base64")}$${Buffer.alloc(64).toString("base64")}`;
+export async function conferirSenhaOuNada(senha: string, armazenado?: string): Promise<boolean> {
+  const ok = await conferirSenha(senha, armazenado ?? HASH_FICTICIO);
+  return !!armazenado && ok;
+}
+
 export async function conferirSenha(senha: string, armazenado: string): Promise<boolean> {
   const [alg, salB64, hashB64] = armazenado.split("$");
   if (alg !== "scrypt" || !salB64 || !hashB64) return false;
@@ -34,7 +41,7 @@ export async function conferirSenha(senha: string, armazenado: string): Promise<
 }
 
 export function validarNovaSenha(senha: unknown): string {
-  if (typeof senha !== "string" || senha.length < 6) throw new ErroAcesso("A senha deve ter pelo menos 6 caracteres.", 403);
+  if (typeof senha !== "string" || senha.length < 8) throw new ErroAcesso("A senha deve ter pelo menos 8 caracteres.", 403);
   if (senha.length > 200) throw new ErroAcesso("Senha muito longa.", 403);
   return senha;
 }
@@ -83,7 +90,10 @@ export async function usuarioAtual(): Promise<Usuario | null> {
   const sessao = await lerToken((await cookies()).get(COOKIE_SESSAO)?.value);
   if (!sessao) return null;
   const u = await repositorio().obterUsuario(sessao.u);
-  return u && u.ativo ? publico(u) : null;
+  if (!u || !u.ativo) return null;
+  // Senha trocada (ou redefinida pelo administrador) depois do login: sessão encerrada.
+  if (sessao.m !== (await marcaSenha(u.senhaHash))) return null;
+  return publico(u);
 }
 
 /** Exige usuário logado e, opcionalmente, permissão para uma ação. Lança ErroAcesso. */

@@ -135,7 +135,7 @@ export function TelaUsuarios({ meuId }: { meuId: string }) {
             <Campo
               rotulo={edicao.id ? "Nova senha (deixe em branco para manter a atual)" : "Senha"}
               obrigatorio={!edicao.id}
-              ajuda="Mínimo de 6 caracteres. A pessoa pode trocá-la depois em “trocar senha”."
+              ajuda="Mínimo de 8 caracteres. A pessoa pode trocá-la depois em “trocar senha”."
             >
               <Entrada type="text" value={edicao.senha} onChange={(e) => set("senha", e.target.value)} autoComplete="new-password" />
             </Campo>

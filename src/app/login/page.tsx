@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PaginaLogin({ searchParams }: { searchParams: Promise<{ voltar?: string }> }) {
   const { voltar } = await searchParams;
-  const destino = voltar && voltar.startsWith("/") && !voltar.startsWith("//") ? voltar : "/";
+  const destino = voltar && /^\/(?![\/\\])/.test(voltar) && !/[\\\s]/.test(voltar) ? voltar : "/";
   if (await usuarioAtual().catch(() => null)) redirect(destino);
   return <FormularioLogin destino={destino} />;
 }

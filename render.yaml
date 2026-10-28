@@ -23,6 +23,13 @@ services:
         sync: false
       - key: APP_SENHA
         sync: false
+      # Chave que assina os logins (sessões). Gerada automaticamente pelo Render.
+      - key: SESSAO_SEGREDO
+        generateValue: true
+      # Opcional, com Cloudflare: o mesmo valor do cabeçalho x-origem-segredo
+      # criado na Cloudflare (veja README → Segurança). Bloqueia o acesso direto ao *.onrender.com.
+      - key: ORIGEM_SEGREDO
+        sync: false
       # Produção: começa sem dados de demonstração e sem o botão que apaga tudo
       - key: SEED_DEMO
         value: "false"

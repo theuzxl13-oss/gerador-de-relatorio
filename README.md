@@ -150,6 +150,48 @@ A mesma explicação aparece na tela quando uma operação falha por causa do ba
 - As permissões são verificadas **no servidor**, não apenas escondidas na tela.
 - Senhas são guardadas com hash (scrypt). A sessão dura 7 dias e fica em cookie protegido (httpOnly).
 
+## Segurança
+
+### O que o sistema já faz
+| Proteção | Como |
+|---|---|
+| Senhas | Guardadas com hash **scrypt** (nunca em texto). Mínimo de 8 caracteres |
+| Tentativas de senha | 5 erros em 15 min (por IP ou por login) bloqueiam por 15 min. Mesmo tempo de resposta para login inexistente e senha errada |
+| Sessão | Cookie `HttpOnly` + `SameSite=Lax` + `Secure`, assinado (HMAC). Expira em 7 dias. Trocar ou redefinir a senha **encerra as sessões nos outros aparelhos**; usuário desativado perde o acesso na hora |
+| Permissões | Conferidas **no servidor** em todas as rotas (não só escondidas na tela). Líderes/porteiros/rondas não acessam relatórios de outros |
+| CSRF | Alterações (POST/PUT/DELETE) só são aceitas quando vêm do próprio site |
+| Cabeçalhos | CSP restritiva, `X-Frame-Options: DENY` (impede o site dentro de outro), HSTS, `nosniff`, `Referrer-Policy`, sem `X-Powered-By` |
+| Cache | Respostas da API com `Cache-Control: private, no-store` (dados pessoais não ficam em cache de proxy/CDN) |
+| Fotos | Só JPG/PNG/WEBP **verdadeiros** (assinatura do arquivo conferida), até 4 MB; servidas com CSP `sandbox` |
+| Fundamentação | Texto das normas sempre reconstruído no servidor (o navegador não consegue inventar fundamentação) |
+| Dados | Nada é apagado por perfis operacionais; exclusão só pelo Admin Geral; restaurar demonstração só com `PERMITIR_RESTAURAR_DEMO=true` |
+| Banco | Conexão com SSL; a `DATABASE_URL` nunca aparece nas mensagens de erro |
+| Dependências | `npm audit` sem vulnerabilidades conhecidas (Next.js 16.4.3) |
+
+### Usar com Cloudflare (recomendado)
+O sistema continua **rodando no Render** (ele precisa de um servidor Node.js e do PostgreSQL); a Cloudflare fica **na frente**, com o seu domínio, protegendo contra ataques e robôs.
+
+1. **Domínio:** adicione o domínio na Cloudflare e, no Render (*Settings → Custom Domains*), cadastre `ocorrencias.seudominio.com.br`. Na Cloudflare crie o registro **CNAME** `ocorrencias` → `fazenda-da-ilha-ocorrencias.onrender.com` com a **nuvem laranja (Proxied)**.
+2. **SSL/TLS → Overview:** modo **Full (strict)**. *Edge Certificates:* ative **Always Use HTTPS**, **Minimum TLS 1.2** e **HSTS**.
+3. **Bloquear o acesso direto ao onrender.com** (para ninguém contornar a Cloudflare):
+   - Gere um texto aleatório longo (ex.: um gerador de senhas, 40 caracteres).
+   - Cloudflare → *Rules → Transform Rules → Modify Request Header* → **Set static** `x-origem-segredo` = esse texto (para todas as requisições do domínio).
+   - Render → *Environment* → `ORIGEM_SEGREDO` = o mesmo texto. A partir daí o endereço `*.onrender.com` responde 403 (exceto `/api/saude`, usado pelo Render).
+4. **Security → WAF:**
+   - **Rate limiting:** regra para `URI Path equals /api/auth/login` → 10 requisições por minuto por IP → *Block* por 10 min.
+   - **Managed rules** (se o plano permitir) e **Bot Fight Mode** ligados.
+   - Opcional: regra *Custom* bloqueando países fora do Brasil (`ip.src.country ne "BR"` → *Block* ou *Managed Challenge*), se ninguém acessar do exterior.
+5. **Caching:** **não** crie regra "Cache Everything". Se quiser garantir, crie *Cache Rule* para o domínio com **Bypass cache** (as páginas e a API têm dados pessoais).
+6. **Não use** Rocket Loader nem "Email Address Obfuscation" (alteram os scripts e podem quebrar a página por causa da CSP).
+7. Render → *Environment*: confirme `SESSAO_SEGREDO` (criado automaticamente pelo Blueprint), `SEED_DEMO=false`, `PERMITIR_RESTAURAR_DEMO=false`.
+
+### Cuidados de uso
+- Use senhas fortes para Admin Geral e Administração e **não compartilhe logins**: cada pessoa com o seu (a linha do tempo registra quem fez o quê).
+- Quando alguém sair da empresa, **desative** o login no mesmo dia.
+- Troque a `APP_SENHA` inicial depois do primeiro acesso (pela tela "trocar senha").
+- Faça backup periódico: botão **Exportar planilha** em Providências e, no Neon, *Branches/Backups*.
+- LGPD: o sistema guarda nomes, endereços (quadra/lote) e fotos de pessoas. Restrinja o acesso a quem precisa e defina por quanto tempo os relatórios ficam guardados.
+
 ## Como a busca encontra a regra
 
 1. **Interpretação**: o texto ("som muito alto depois das 22 horas") é normalizado e comparado com um dicionário de categorias e sinônimos (`src/lib/analysis/categorias.ts`). Exemplo: *Perturbação de sossego* ← som alto, barulho, música, festa, gritaria…

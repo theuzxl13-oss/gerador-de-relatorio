@@ -14,6 +14,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       "Content-Type": a.tipo,
       "Cache-Control": "private, max-age=31536000, immutable",
       "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Content-Disposition": "inline",
     },
   });
 }

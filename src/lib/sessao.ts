@@ -14,6 +14,8 @@ export interface DadosSessao {
   p: Perfil;
   /** expiração (epoch em segundos) */
   e: number;
+  /** marca da senha atual: trocar a senha encerra as sessões abertas em outros aparelhos */
+  m?: string;
 }
 
 const enc = new TextEncoder();
@@ -44,8 +46,14 @@ async function chave() {
   return crypto.subtle.importKey("raw", enc.encode(segredo()), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-export async function criarToken(usuarioId: string, perfil: Perfil): Promise<string> {
-  const dados: DadosSessao = { u: usuarioId, p: perfil, e: Math.floor(Date.now() / 1000) + DURACAO_SESSAO_SEGUNDOS };
+/** Identificador curto derivado do hash da senha (não revela a senha nem o hash). */
+export async function marcaSenha(senhaHash: string): Promise<string> {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`marca|${senhaHash}`)));
+  return b64url(d).slice(0, 16);
+}
+
+export async function criarToken(usuarioId: string, perfil: Perfil, marca?: string): Promise<string> {
+  const dados: DadosSessao = { u: usuarioId, p: perfil, e: Math.floor(Date.now() / 1000) + DURACAO_SESSAO_SEGUNDOS, ...(marca ? { m: marca } : {}) };
   const corpo = b64url(enc.encode(JSON.stringify(dados)));
   const assinatura = new Uint8Array(await crypto.subtle.sign("HMAC", await chave(), enc.encode(corpo)));
   return `${corpo}.${b64url(assinatura)}`;

@@ -16,7 +16,7 @@ export function TelaMinhaSenha() {
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
-    if (nova.length < 6) return setMsg({ tipo: "erro", texto: "A nova senha deve ter pelo menos 6 caracteres." });
+    if (nova.length < 8) return setMsg({ tipo: "erro", texto: "A nova senha deve ter pelo menos 8 caracteres." });
     if (nova !== confirma) return setMsg({ tipo: "erro", texto: "A confirmação não confere com a nova senha." });
     setSalvando(true);
     try {
@@ -45,7 +45,7 @@ export function TelaMinhaSenha() {
           <Campo rotulo="Senha atual">
             <Entrada type="password" value={atual} onChange={(e) => setAtual(e.target.value)} autoComplete="current-password" required />
           </Campo>
-          <Campo rotulo="Nova senha" ajuda="Mínimo de 6 caracteres.">
+          <Campo rotulo="Nova senha" ajuda="Mínimo de 8 caracteres.">
             <Entrada type="password" value={nova} onChange={(e) => setNova(e.target.value)} autoComplete="new-password" required />
           </Campo>
           <Campo rotulo="Confirmar nova senha">

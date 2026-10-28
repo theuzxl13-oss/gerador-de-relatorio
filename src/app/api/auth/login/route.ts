@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { conferirSenha, garantirAdministradorInicial } from "@/server/auth";
+import { conferirSenhaOuNada, garantirAdministradorInicial } from "@/server/auth";
+import { gravarSessao } from "@/server/cookie";
 import { repositorio } from "@/server/db";
 import { diagnosticarErroBanco } from "@/server/diagnostico";
-import { COOKIE_SESSAO, DURACAO_SESSAO_SEGUNDOS, criarToken } from "@/lib/sessao";
+import { bloqueio, ipDoCliente, limparFalhas, registrarFalha } from "@/server/limite";
 
 export const dynamic = "force-dynamic";
 
@@ -10,26 +11,32 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => null)) as { login?: unknown; senha?: unknown } | null;
-  const login = typeof b?.login === "string" ? b.login.trim() : "";
-  const senha = typeof b?.senha === "string" ? b.senha : "";
+  const login = typeof b?.login === "string" ? b.login.trim().slice(0, 80) : "";
+  const senha = typeof b?.senha === "string" ? b.senha.slice(0, 200) : "";
   if (!login || !senha) return NextResponse.json({ erro: "Informe usuário e senha." }, { status: 400 });
+
+  const ip = ipDoCliente(req);
+  const minutos = bloqueio(ip, login);
+  if (minutos > 0) {
+    return NextResponse.json(
+      { erro: `Muitas tentativas incorretas. Aguarde ${minutos} minuto(s) e tente novamente.` },
+      { status: 429, headers: { "Retry-After": String(minutos * 60) } },
+    );
+  }
 
   try {
     await garantirAdministradorInicial();
     const u = await repositorio().obterUsuarioPorLogin(login);
-    if (!u || !u.ativo || !(await conferirSenha(senha, u.senhaHash))) {
+    const senhaOk = await conferirSenhaOuNada(senha, u?.senhaHash);
+    if (!u || !u.ativo || !senhaOk) {
+      registrarFalha(ip, login);
+      console.warn(`[login] falha para "${login}" (ip ${ip})`);
       await espera(600); // dificulta tentativas em sequência
       return NextResponse.json({ erro: "Usuário ou senha incorretos." }, { status: 401 });
     }
+    limparFalhas(ip, login);
     const resp = NextResponse.json({ ok: true, nome: u.nome, perfil: u.perfil });
-    resp.cookies.set(COOKIE_SESSAO, await criarToken(u.id, u.perfil), {
-      httpOnly: true,
-      sameSite: "lax",
-      // HTTPS no Render (atrás do proxy dele); HTTP apenas em uso local.
-      secure: req.headers.get("x-forwarded-proto") === "https" || new URL(req.url).protocol === "https:",
-      path: "/",
-      maxAge: DURACAO_SESSAO_SEGUNDOS,
-    });
+    await gravarSessao(resp, req, u);
     return resp;
   } catch (e) {
     console.error("[login]", e);

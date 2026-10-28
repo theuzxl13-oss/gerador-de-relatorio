@@ -7,10 +7,10 @@ export const dynamic = "force-dynamic";
 
 /**
  * Apaga TODAS as ocorrências e recria os dados demonstrativos.
- * Bloqueado quando PERMITIR_RESTAURAR_DEMO=false (recomendado em produção).
+ * Só funciona com PERMITIR_RESTAURAR_DEMO=true (nunca em produção).
  */
 export async function POST() {
-  if (process.env.PERMITIR_RESTAURAR_DEMO === "false") {
+  if (process.env.PERMITIR_RESTAURAR_DEMO !== "true") {
     return NextResponse.json({ erro: "Restauração da demonstração desativada neste ambiente." }, { status: 403 });
   }
   return responder(async () => {
@@ -23,6 +23,6 @@ export async function GET() {
   if (!(await usuarioAtual())) return NextResponse.json({ erro: "Sessão expirada." }, { status: 401 });
   return NextResponse.json({
     armazenamento: repositorio().tipo,
-    permiteRestaurar: process.env.PERMITIR_RESTAURAR_DEMO !== "false",
+    permiteRestaurar: process.env.PERMITIR_RESTAURAR_DEMO === "true",
   });
 }

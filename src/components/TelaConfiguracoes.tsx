@@ -146,7 +146,7 @@ export function TelaConfiguracoes() {
         {info?.permiteRestaurar && (
           <div className="mt-5 border-t border-gray-100 pt-4">
             <p className="mb-2 text-sm text-gray-600">
-              Apaga todas as ocorrências e recria os dados demonstrativos. Use apenas na fase de testes. Para desativar este botão em produção, defina PERMITIR_RESTAURAR_DEMO=false.
+              Apaga todas as ocorrências e recria os dados demonstrativos. Use apenas na fase de testes. Só aparece com PERMITIR_RESTAURAR_DEMO=true.
             </p>
             <Botao variante="perigo" onClick={restaurarDemo}>Restaurar dados demonstrativos</Botao>
           </div>

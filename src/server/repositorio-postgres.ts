@@ -123,8 +123,8 @@ export class RepositorioPostgres implements Repositorio {
       const cfg = await c.query("select 1 from configuracoes where id = 1");
       if (cfg.rowCount === 0) {
         await c.query("insert into configuracoes (id, dados) values (1, $1)", [CONFIGURACOES_PADRAO]);
-        // Primeira execução: cria as ocorrências demonstrativas (pode ser desligado com SEED_DEMO=false).
-        if (process.env.SEED_DEMO !== "false") await this.inserirDemonstracao(c);
+        // Primeira execução: ocorrências demonstrativas somente com SEED_DEMO=true (banco de produção começa vazio).
+        if (process.env.SEED_DEMO === "true") await this.inserirDemonstracao(c);
       }
       await c.query("commit");
     } catch (e) {
