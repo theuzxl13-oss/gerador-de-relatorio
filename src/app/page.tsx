@@ -2,19 +2,28 @@ import Link from "next/link";
 import { repositorio } from "@/server/db";
 import { hojeISO, dataCurta } from "@/lib/relatorio";
 import { normalizar } from "@/lib/analysis/texto";
-import { SeloStatus } from "@/components/ui";
+import { Aviso, SeloStatus } from "@/components/ui";
+import { exigirPagina } from "@/server/pagina";
+import { pode, podeVerOcorrencia, type Acao } from "@/lib/permissoes";
+import { aguardaDecisao } from "@/lib/providencia";
 
 export const dynamic = "force-dynamic";
 
-const ATALHOS = [
-  { href: "/ocorrencias/nova", titulo: "Nova ocorrência", texto: "Registrar e gerar relatório", destaque: true, icone: "M12 5v14M5 12h14" },
-  { href: "/historico", titulo: "Histórico", texto: "Consultar, imprimir e editar", icone: "M4 6h16M4 12h16M4 18h10" },
+const ATALHOS: { href: string; titulo: string; texto: string; destaque?: boolean; icone: string; acao?: Acao }[] = [
+  { href: "/ocorrencias/nova", titulo: "Nova ocorrência", texto: "Registrar e gerar relatório", destaque: true, icone: "M12 5v14M5 12h14", acao: "registrar" },
+  { href: "/painel", titulo: "Providências", texto: "Análise, prazos e multas", icone: "M9 11l3 3 8-8M4 12v7h16v-7", acao: "painel" },
+  { href: "/historico", titulo: "Histórico", texto: "Consultar e imprimir", icone: "M4 6h16M4 12h16M4 18h10" },
   { href: "/base-normativa", titulo: "Base normativa", texto: "Estatuto e Regulamento", icone: "M6 4h9l3 3v13H6zM9 10h6M9 14h6" },
-  { href: "/configuracoes", titulo: "Configurações", texto: "Dados do relatório e sistema", icone: "M12 8a4 4 0 100 8 4 4 0 000-8zM4 12h2M18 12h2M12 4v2M12 18v2" },
+  { href: "/configuracoes", titulo: "Configurações", texto: "Dados do relatório e sistema", icone: "M12 8a4 4 0 100 8 4 4 0 000-8zM4 12h2M18 12h2M12 4v2M12 18v2", acao: "configuracoes" },
 ];
 
-export default async function Inicio() {
-  const ocorrencias = await repositorio().listarOcorrencias();
+export default async function Inicio({ searchParams }: { searchParams: Promise<{ "sem-permissao"?: string }> }) {
+  const usuario = await exigirPagina();
+  const semPermissao = (await searchParams)["sem-permissao"] === "1";
+  // Líderes, porteiros e rondas veem apenas os relatórios que geraram.
+  const ocorrencias = (await repositorio().listarOcorrencias()).filter((o) => podeVerOcorrencia(usuario, o));
+  const atalhos = ATALHOS.filter((a) => !a.acao || pode(usuario.perfil, a.acao)).slice(0, 4);
+  const pendentes = pode(usuario.perfil, "painel") ? ocorrencias.filter(aguardaDecisao).length : 0;
   const hoje = hojeISO();
   const mes = hoje.slice(0, 7);
 
@@ -34,13 +43,20 @@ export default async function Inicio() {
 
   return (
     <div className="space-y-6">
+      {semPermissao && <Aviso tipo="alerta">O seu perfil não tem acesso a esta área.</Aviso>}
+      {pendentes > 0 && (
+        <Aviso tipo="alerta">
+          {pendentes === 1 ? "1 relatório aguarda" : `${pendentes} relatórios aguardam`} a providência da Administração.{" "}
+          <Link href="/painel" className="font-semibold underline">Ver providências</Link>
+        </Aviso>
+      )}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Painel de ocorrências</h1>
         <p className="text-sm text-gray-600">Registro de ocorrências e emissão de relatórios para a Administração.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {ATALHOS.map((a) => (
+        {atalhos.map((a) => (
           <Link
             key={a.href}
             href={a.href}
@@ -65,7 +81,7 @@ export default async function Inicio() {
         {[
           { rotulo: "Ocorrências hoje", valor: totalHoje },
           { rotulo: "Ocorrências no mês", valor: totalMes },
-          { rotulo: "Total de relatórios", valor: ocorrencias.length },
+          { rotulo: pode(usuario.perfil, "verTodas") ? "Total de relatórios" : "Meus relatórios", valor: ocorrencias.length },
         ].map((k) => (
           <div key={k.rotulo} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="text-xs font-medium text-gray-500 sm:text-sm">{k.rotulo}</div>

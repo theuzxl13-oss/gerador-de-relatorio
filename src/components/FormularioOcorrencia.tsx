@@ -7,20 +7,19 @@ import { MENSAGEM_NAO_ENCONTRADO, type Candidato, type ResultadoAnalise } from "
 import { criarSnapshot } from "@/lib/citacao";
 import { dataCurta, hojeISO, paragrafoPrincipal } from "@/lib/relatorio";
 import {
-  STATUS_LABEL,
   TRATAMENTOS,
   type AnexoInfo,
   type FundamentacaoSnapshot,
   type Genero,
   type Norma,
   type Ocorrencia,
-  type StatusOcorrencia,
   type TermoSecao,
   type Tratamento,
 } from "@/lib/types";
 import { AnexosFotos } from "./AnexosFotos";
 import { NormaDetalhe } from "./NormaDetalhe";
 import { SeletorNorma } from "./SeletorNorma";
+import { useUsuario } from "./UsuarioContexto";
 import { AreaTexto, Aviso, Botao, Campo, Cartao, Entrada, SeloConfianca, Selecao } from "./ui";
 
 interface Selecionada {
@@ -38,12 +37,12 @@ interface Props {
   assinaturaPadrao: { nome: string; cargo: string };
 }
 
-const CHAVE_ASSINATURA = "fazenda-ilha:ultima-assinatura";
+/** Última assinatura usada por este login neste aparelho. */
+const chaveAssinatura = (usuarioId?: string) => `fazenda-ilha:ultima-assinatura:${usuarioId ?? ""}`;
 
-/** Última assinatura usada neste aparelho (cada portaria/zeladoria pode ter a sua). */
-function ultimaAssinatura(): { nome: string; cargo: string } | null {
+function ultimaAssinatura(usuarioId?: string): { nome: string; cargo: string } | null {
   try {
-    const v = JSON.parse(localStorage.getItem(CHAVE_ASSINATURA) ?? "null");
+    const v = JSON.parse(localStorage.getItem(chaveAssinatura(usuarioId)) ?? "null");
     return v && typeof v.nome === "string" ? v : null;
   } catch {
     return null;
@@ -59,6 +58,7 @@ function agoraHHMM() {
 
 export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, termoSecao, assinaturaPadrao }: Props) {
   const router = useRouter();
+  const usuarioId = useUsuario()?.id;
   const base = existente ?? modelo;
   const data = existente?.data ?? hojeISO();
 
@@ -78,7 +78,6 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   const [anexos, setAnexos] = useState<AnexoInfo[]>(existente?.anexos ?? []);
   const [assinaturaNome, setAssinaturaNome] = useState(existente?.assinaturaNome ?? assinaturaPadrao.nome);
   const [assinaturaCargo, setAssinaturaCargo] = useState(existente?.assinaturaNome ? existente.assinaturaCargo ?? "" : assinaturaPadrao.cargo);
-  const [status, setStatus] = useState<StatusOcorrencia>(existente?.status ?? "REGISTRADA");
   const [incluirTexto, setIncluirTexto] = useState(base?.incluirTextoNorma ?? incluirTextoPadrao);
 
   const [erros, setErros] = useState<Record<string, string>>({});
@@ -98,7 +97,7 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
 
   useEffect(() => {
     if (existente) return;
-    const u = ultimaAssinatura();
+    const u = ultimaAssinatura(usuarioId);
     if (u) {
       setAssinaturaNome(u.nome);
       setAssinaturaCargo(u.cargo);
@@ -188,10 +187,9 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
       anexos,
       assinaturaNome: assinaturaNome.trim() || undefined,
       assinaturaCargo: assinaturaCargo.trim() || undefined,
-      status: encaminharAnalise ? "AGUARDANDO_ANALISE" : existente ? status : "REGISTRADA",
     };
     try {
-      localStorage.setItem(CHAVE_ASSINATURA, JSON.stringify({ nome: assinaturaNome.trim(), cargo: assinaturaCargo.trim() }));
+      localStorage.setItem(chaveAssinatura(usuarioId), JSON.stringify({ nome: assinaturaNome.trim(), cargo: assinaturaCargo.trim() }));
     } catch {
       /* armazenamento local indisponível */
     }
@@ -482,20 +480,9 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
               <input type="checkbox" className="h-4 w-4 accent-marca-700" checked={incluirTexto} onChange={(e) => setIncluirTexto(e.target.checked)} />
               Transcrever o texto da regra no relatório
             </label>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Campo rotulo="Observações internas (opcional)" className="sm:col-span-2" ajuda="Impressas no campo de observações do relatório.">
-                <AreaTexto rows={2} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} maxLength={4000} />
-              </Campo>
-              {existente && (
-                <Campo rotulo="Status">
-                  <Selecao value={status} onChange={(e) => setStatus(e.target.value as StatusOcorrencia)}>
-                    {Object.entries(STATUS_LABEL).map(([v, r]) => (
-                      <option key={v} value={v}>{r}</option>
-                    ))}
-                  </Selecao>
-                </Campo>
-              )}
-            </div>
+            <Campo rotulo="Observações (opcional)" ajuda="Impressas no campo de observações do relatório.">
+              <AreaTexto rows={2} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} maxLength={4000} />
+            </Campo>
           </div>
         </Cartao>
       )}

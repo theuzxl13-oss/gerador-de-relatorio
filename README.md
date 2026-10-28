@@ -21,6 +21,10 @@ Sistema web para a Administração da **Associação dos Adquirentes de Unidades
 | **PDF e impressão** | PDF A4 profissional (gerado no navegador) e impressão direta |
 | **Histórico** | Pesquisa e filtros (nome, quadra, lote, ocorrência, período, artigo/item, documento, status). Ações: visualizar, editar, imprimir, gerar PDF, duplicar e excluir |
 | **Base normativa** | Estatuto Social e Regulamento Interno cadastrados norma a norma, com palavras-chave e categorias editáveis |
+| **Logins e perfis** | Cada pessoa tem usuário e senha. Perfis: **Admin Geral**, **Gerente**, **Administração**, **Líder**, **Porteiro** e **Ronda** (veja "Usuários e permissões") |
+| **Providências** | A Administração registra o que foi feito com cada relatório: **arquivado**, **notificado** (com período de esclarecimento e se a pessoa esclareceu ou não) ou **multado** (até uma taxa, dobrada na reincidência; prazo de recurso de 30 dias – RI tópico XV) |
+| **Reincidência e prazos** | Aviso de reincidência (mesma quadra/lote e mesma regra em 12 meses), alertas de prazo vencido e painel **Providências** com exportação em planilha (CSV) |
+| **Linha do tempo** | Cada relatório guarda quem o gerou, quem editou e quem decidiu, com data e hora |
 | **Auditoria** | O texto oficial da regra fica **gravado no relatório** no momento da confirmação. Edições posteriores na Base Normativa não alteram relatórios já emitidos |
 
 ---
@@ -99,7 +103,8 @@ As tabelas são criadas **automaticamente** no primeiro acesso ao sistema. Não 
 | Variável | Obrigatória | Descrição |
 |---|---|---|
 | `DATABASE_URL` | **Sim, em produção** | String de conexão PostgreSQL (Neon). Sem ela, os dados ficam no disco do Render e são **apagados a cada reinício** |
-| `APP_USUARIO` / `APP_SENHA` | Recomendado | Ativam login por usuário e senha. O endereço do Render é público |
+| `APP_USUARIO` / `APP_SENHA` | **Sim** | Login e senha do **administrador inicial**, criado automaticamente no primeiro acesso. Os demais usuários são cadastrados pelo administrador na tela **Usuários**. Depois que o administrador existir, alterar essas variáveis não muda a senha dele (use "trocar senha") |
+| `SESSAO_SEGREDO` | Não | Chave das sessões de login. Se omitida, é derivada das outras variáveis. Trocar o valor desconecta todos os usuários |
 | `TZ` | Recomendado | `America/Sao_Paulo`, para a data automática do relatório |
 | `SEED_DEMO` | Não | `true` cria ocorrências demonstrativas na primeira execução. Use `false` para começar vazio |
 | `PERMITIR_RESTAURAR_DEMO` | Não | `false` desativa o botão que apaga as ocorrências e recria a demonstração. **Use `false` quando o sistema estiver em uso real** |
@@ -122,6 +127,28 @@ A mesma explicação aparece na tela quando uma operação falha por causa do ba
 - Para começar a usar de verdade: defina `SEED_DEMO=false` e `PERMITIR_RESTAURAR_DEMO=false`. Se a demonstração já foi criada, use **Configurações → Restaurar dados demonstrativos** apenas antes de desativar, ou apague as ocorrências demonstrativas pelo Histórico.
 
 ---
+
+## Usuários e permissões
+
+| Ação | Admin Geral | Gerente | Administração | Líder / Porteiro / Ronda |
+|---|---|---|---|---|
+| Gerar relatório (com fotos) | ✅ | ❌ | ✅ | ✅ |
+| Ver relatórios | todos | todos | todos | só os próprios |
+| Imprimir / PDF | ✅ | ✅ | ✅ | ✅ (os próprios) |
+| Painel Providências e exportação | ✅ | ✅ (só visualiza) | ✅ | ❌ |
+| Registrar providência (arquivado / notificado / multado) | ✅ | ❌ | ✅ | ❌ |
+| Editar relatório | ✅ | ❌ | ✅ | ❌ |
+| Excluir relatório | ✅ | ❌ | ❌ | ❌ |
+| Criar logins | todos os perfis | ❌ | Líder, Porteiro e Ronda | ❌ |
+| Base Normativa (alterar) e Configurações | ✅ | ❌ | ❌ | ❌ |
+
+- O **primeiro Admin Geral** é criado com `APP_USUARIO` / `APP_SENHA`. Logins antigos "Administrador" passam a ser Admin Geral e "Presença" passam a ser Líder.
+- Em **Configurações → Providências** informe o **valor da taxa** (o sistema confere o limite da multa) e o prazo padrão de esclarecimento.
+- A situação do relatório é definida pela providência: Registrada / Aguardando análise → Arquivada, Notificada (→ Concluída quando o resultado do esclarecimento é registrado) ou Multada.
+- Usuários **não são excluídos**, apenas desativados, para preservar o histórico. O sistema não permite ficar sem nenhum Admin Geral ativo.
+- Cada pessoa pode trocar a própria senha clicando no seu nome, no topo da tela.
+- As permissões são verificadas **no servidor**, não apenas escondidas na tela.
+- Senhas são guardadas com hash (scrypt). A sessão dura 7 dias e fica em cookie protegido (httpOnly).
 
 ## Como a busca encontra a regra
 

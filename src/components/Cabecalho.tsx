@@ -3,19 +3,29 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { pode, type Acao } from "@/lib/permissoes";
+import { PERFIL_LABEL, type Usuario } from "@/lib/types";
 import { Logo } from "./Logo";
 
-const LINKS = [
+const LINKS: { href: string; rotulo: string; acao?: Acao }[] = [
   { href: "/", rotulo: "Início" },
-  { href: "/ocorrencias/nova", rotulo: "Nova ocorrência" },
+  { href: "/ocorrencias/nova", rotulo: "Nova ocorrência", acao: "registrar" },
   { href: "/historico", rotulo: "Histórico" },
+  { href: "/painel", rotulo: "Providências", acao: "painel" },
   { href: "/base-normativa", rotulo: "Base normativa" },
-  { href: "/configuracoes", rotulo: "Configurações" },
+  { href: "/usuarios", rotulo: "Usuários", acao: "usuarios" },
+  { href: "/configuracoes", rotulo: "Configurações", acao: "configuracoes" },
 ];
 
-export function Cabecalho() {
+async function sair() {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+  window.location.href = "/login";
+}
+
+export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
   const caminho = usePathname();
   const [aberto, setAberto] = useState(false);
+  const links = usuario ? LINKS.filter((l) => !l.acao || pode(usuario.perfil, l.acao)) : [];
   const ativo = (href: string) => (href === "/" ? caminho === "/" : caminho.startsWith(href));
 
   return (
@@ -29,12 +39,12 @@ export function Cabecalho() {
           </div>
         </Link>
 
-        <nav className="ml-auto hidden items-center gap-1 lg:flex">
-          {LINKS.map((l) => (
+        <nav className="ml-auto hidden items-center gap-0.5 xl:flex">
+          {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
-              className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              className={`rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
                 ativo(l.href) ? "bg-white/15 text-white" : "text-marca-100 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -43,9 +53,21 @@ export function Cabecalho() {
           ))}
         </nav>
 
+        {usuario && (
+          <div className="hidden items-center gap-2 border-l border-white/15 pl-3 xl:flex">
+            <Link href="/minha-senha" className="max-w-[9rem] text-right leading-tight hover:underline" title="Trocar minha senha">
+              <span className="block truncate text-sm font-semibold">{usuario.nome}</span>
+              <span className="block text-xs text-marca-100">{PERFIL_LABEL[usuario.perfil]}</span>
+            </Link>
+            <button type="button" onClick={sair} className="rounded-md px-2.5 py-1.5 text-sm text-marca-100 hover:bg-white/10 hover:text-white">
+              Sair
+            </button>
+          </div>
+        )}
+
         <button
           type="button"
-          className="ml-auto rounded-md p-2 hover:bg-white/10 lg:hidden"
+          className={`ml-auto rounded-md p-2 hover:bg-white/10 xl:hidden ${usuario ? "" : "hidden"}`}
           aria-label="Abrir menu"
           aria-expanded={aberto}
           onClick={() => setAberto((v) => !v)}
@@ -57,8 +79,8 @@ export function Cabecalho() {
       </div>
 
       {aberto && (
-        <nav className="border-t border-white/10 px-4 pb-3 lg:hidden">
-          {LINKS.map((l) => (
+        <nav className="border-t border-white/10 px-4 pb-3 xl:hidden">
+          {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
@@ -68,6 +90,17 @@ export function Cabecalho() {
               {l.rotulo}
             </Link>
           ))}
+          {usuario && (
+            <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-3">
+              <Link href="/minha-senha" onClick={() => setAberto(false)} className="px-3 text-sm">
+                <span className="font-semibold">{usuario.nome}</span>{" "}
+                <span className="text-marca-100">· {PERFIL_LABEL[usuario.perfil]} · trocar senha</span>
+              </Link>
+              <button type="button" onClick={sair} className="rounded-md px-3 py-2 text-sm font-medium hover:bg-white/10">
+                Sair
+              </button>
+            </div>
+          )}
         </nav>
       )}
     </header>

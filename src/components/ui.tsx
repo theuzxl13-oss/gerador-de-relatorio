@@ -85,13 +85,15 @@ export function SeloConfianca({ confianca }: { confianca?: Confianca }) {
 const COR_STATUS: Record<StatusOcorrencia, string> = {
   REGISTRADA: "bg-blue-50 text-blue-800 ring-blue-200",
   AGUARDANDO_ANALISE: "bg-amber-50 text-amber-800 ring-amber-200",
+  ARQUIVADA: "bg-slate-100 text-slate-700 ring-slate-300",
   NOTIFICADA: "bg-violet-50 text-violet-800 ring-violet-200",
+  MULTADA: "bg-red-50 text-red-800 ring-red-200",
   CONCLUIDA: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   CANCELADA: "bg-gray-100 text-gray-600 ring-gray-200",
 };
 
 export function SeloStatus({ status }: { status: StatusOcorrencia }) {
-  return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${COR_STATUS[status]}`}>{STATUS_LABEL[status]}</span>;
+  return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${COR_STATUS[status] ?? COR_STATUS.REGISTRADA}`}>{STATUS_LABEL[status] ?? status}</span>;
 }
 
 export function Carregando({ texto = "Carregando..." }: { texto?: string }) {

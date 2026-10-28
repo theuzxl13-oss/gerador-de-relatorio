@@ -1,12 +1,19 @@
 import { criarSnapshot } from "@/lib/citacao";
+import { multaMaxima, formatarReais, statusDaOcorrencia } from "@/lib/providencia";
 import {
   TRATAMENTOS,
-  STATUS_LABEL,
+  ESCLARECIMENTO_LABEL,
+  PROVIDENCIA_LABEL,
+  RECURSO_LABEL,
+  type Providencia,
+  type RegistradoPor,
+  type ResultadoEsclarecimento,
+  type SituacaoRecurso,
+  type TipoProvidencia,
   type AnexoInfo,
   type FundamentacaoSnapshot,
   type Norma,
   type Ocorrencia,
-  type StatusOcorrencia,
   type Tratamento,
   type Genero,
   type Configuracoes,
@@ -82,7 +89,6 @@ export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: O
   if (!TRATAMENTOS.includes(tratamento)) throw new ErroValidacao("Selecione o tratamento.");
 
   const genero = (["M", "F", "N"] as Genero[]).includes(b.genero as Genero) ? (b.genero as Genero) : undefined;
-  const status = (b.status as StatusOcorrencia) in STATUS_LABEL ? (b.status as StatusOcorrencia) : "REGISTRADA";
 
   const principal = fundamentacao(b.fundamentacaoPrincipal, normas, atual?.fundamentacaoPrincipal);
   const complementar = principal ? fundamentacao(b.fundamentacaoComplementar, normas, atual?.fundamentacaoComplementar) : undefined;
@@ -110,9 +116,73 @@ export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: O
     anexos: anexos(b.anexos),
     assinaturaNome: texto(b.assinaturaNome, "Assinatura – nome", false, 120),
     assinaturaCargo: texto(b.assinaturaCargo, "Assinatura – cargo", false, 120),
-    // Sem fundamentação, a ocorrência fica encaminhada para análise da Administração.
-    status: !principal && status === "REGISTRADA" ? "AGUARDANDO_ANALISE" : status,
+    // A situação é definida pelo servidor: sem providência, "Registrada" (ou "Aguardando
+    // análise" quando falta a fundamentação); com providência, conforme a decisão.
+    status: statusDaOcorrencia({ fundamentacaoPrincipal: principal, providencia: atual?.providencia, status: atual?.status }),
   };
+}
+
+const dataValida = (v: unknown, campo: string, obrigatorio = false): string | undefined => {
+  const t = texto(v, campo, obrigatorio, 10);
+  if (t && !/^\d{4}-\d{2}-\d{2}$/.test(t)) throw new ErroValidacao(`O campo "${campo}" deve ser uma data válida.`);
+  return t;
+};
+
+const umDe = <T extends string>(v: unknown, opcoes: Record<T, string>, padrao: T): T => (typeof v === "string" && v in opcoes ? (v as T) : padrao);
+
+/**
+ * Valida a providência registrada pela Administração (RI XV – Atos disciplinares).
+ * Quem decidiu e quando são preenchidos pelo servidor; se o tipo não mudou,
+ * a decisão original é preservada e as alterações vão para a linha do tempo.
+ */
+export function validarProvidencia(
+  body: unknown,
+  ctx: { usuario: RegistradoPor; valorTaxa: number; anterior?: Providencia },
+): Providencia {
+  if (!body || typeof body !== "object") throw new ErroValidacao("Dados inválidos.");
+  const b = body as Record<string, unknown>;
+  if (typeof b.tipo !== "string" || !(b.tipo in PROVIDENCIA_LABEL)) throw new ErroValidacao("Selecione a providência: arquivado, notificado ou multado.");
+  const tipo = b.tipo as TipoProvidencia;
+  const mesmaDecisao = ctx.anterior?.tipo === tipo;
+
+  const p: Providencia = {
+    tipo,
+    descricao: texto(b.descricao, "Providência tomada (descrição)", true, 4000)!,
+    decididoEm: mesmaDecisao ? ctx.anterior!.decididoEm : new Date().toISOString(),
+    decididoPor: mesmaDecisao ? ctx.anterior!.decididoPor : ctx.usuario,
+  };
+  if (tipo === "ARQUIVADO") return p;
+
+  p.dataRecebimento = dataValida(b.dataRecebimento, "Data de recebimento pela pessoa");
+  p.recursoSituacao = umDe<SituacaoRecurso>(b.recursoSituacao, RECURSO_LABEL, "SEM_RECURSO");
+  p.recursoObservacao = texto(b.recursoObservacao, "Observação do recurso", false, 2000);
+
+  if (tipo === "NOTIFICADO") {
+    p.esclarecimentoInicio = dataValida(b.esclarecimentoInicio, "Início do período de esclarecimento", true);
+    p.esclarecimentoFim = dataValida(b.esclarecimentoFim, "Fim do período de esclarecimento", true);
+    if (p.esclarecimentoFim! < p.esclarecimentoInicio!) throw new ErroValidacao("O fim do período de esclarecimento deve ser igual ou posterior ao início.");
+    p.esclarecimentoResultado = umDe<ResultadoEsclarecimento>(b.esclarecimentoResultado, ESCLARECIMENTO_LABEL, "PENDENTE");
+    p.esclarecimentoObservacao = texto(b.esclarecimentoObservacao, "Observação do esclarecimento", false, 2000);
+    if (p.esclarecimentoResultado !== "PENDENTE" && !p.esclarecimentoObservacao) {
+      throw new ErroValidacao("Descreva o esclarecimento apresentado (ou a ausência dele).");
+    }
+    return p;
+  }
+
+  // MULTADO
+  const valor = typeof b.multaValor === "number" ? b.multaValor : Number(String(b.multaValor ?? "").replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(valor) || valor <= 0) throw new ErroValidacao("Informe o valor da multa.");
+  p.multaValor = Math.round(valor * 100) / 100;
+  p.reincidente = b.reincidente === true;
+  const max = multaMaxima(ctx.valorTaxa, p.reincidente);
+  if (max !== undefined && p.multaValor > max) {
+    throw new ErroValidacao(
+      p.reincidente
+        ? `Na reincidência a multa é dobrada: no máximo ${formatarReais(max)} (duas taxas – RI XV, 2.3 e 2.4).`
+        : `A multa é de até uma taxa da Associação: no máximo ${formatarReais(max)} (RI XV, 2.3). Se for reincidência, marque a opção.`,
+    );
+  }
+  return p;
 }
 
 const lista = (v: unknown): string[] =>
@@ -163,5 +233,7 @@ export function validarConfiguracoes(body: unknown): Configuracoes {
     termoSecaoRegulamento: b.termoSecaoRegulamento === "Artigo" ? "Artigo" : "tópico",
     responsavelNome: texto(b.responsavelNome, "Responsável", false, 120) ?? "",
     responsavelCargo: texto(b.responsavelCargo, "Cargo", false, 120) ?? "",
+    valorTaxa: Math.max(0, Math.round((Number(b.valorTaxa) || 0) * 100) / 100),
+    prazoEsclarecimentoDias: Math.min(365, Math.max(1, Math.round(Number(b.prazoEsclarecimentoDias) || 10))),
   };
 }

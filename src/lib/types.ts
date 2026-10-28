@@ -119,17 +119,25 @@ export const TRATAMENTOS: Tratamento[] = [
 
 export type Genero = "M" | "F" | "N";
 
+/**
+ * Situação do relatório. "Registrada"/"Aguardando análise" = ainda sem providência;
+ * as demais são definidas automaticamente pela providência registrada pela Administração.
+ */
 export type StatusOcorrencia =
   | "REGISTRADA"
   | "AGUARDANDO_ANALISE"
+  | "ARQUIVADA"
   | "NOTIFICADA"
+  | "MULTADA"
   | "CONCLUIDA"
   | "CANCELADA";
 
 export const STATUS_LABEL: Record<StatusOcorrencia, string> = {
   REGISTRADA: "Registrada",
   AGUARDANDO_ANALISE: "Aguardando análise",
+  ARQUIVADA: "Arquivada",
   NOTIFICADA: "Notificada",
+  MULTADA: "Multada",
   CONCLUIDA: "Concluída",
   CANCELADA: "Cancelada",
 };
@@ -174,6 +182,12 @@ export interface Ocorrencia {
   observacoes?: string;
   /** Fotos/imagens do relatório, na ordem de exibição. */
   anexos?: AnexoInfo[];
+  /** Usuário que registrou a ocorrência no sistema (auditoria). */
+  registradoPor?: RegistradoPor;
+  /** Decisão da Administração (arquivado, notificado ou multado). */
+  providencia?: Providencia;
+  /** Linha do tempo: criação, edições e decisões. Gravada somente pelo servidor. */
+  historico?: EventoAuditoria[];
   /** Quem assina o relatório (padrão: Configurações). */
   assinaturaNome?: string;
   assinaturaCargo?: string;
@@ -199,6 +213,10 @@ export interface Configuracoes {
   termoSecaoRegulamento: TermoSecao;
   responsavelNome: string;
   responsavelCargo: string;
+  /** Valor da taxa da Associação (R$). A multa é de até uma taxa (RI XV, 2.3), dobrada na reincidência. 0 = não informado. */
+  valorTaxa: number;
+  /** Prazo padrão, em dias, para o esclarecimento após a notificação. */
+  prazoEsclarecimentoDias: number;
 }
 
 export const CONFIGURACOES_PADRAO: Configuracoes = {
@@ -214,4 +232,117 @@ export const CONFIGURACOES_PADRAO: Configuracoes = {
   termoSecaoRegulamento: "tópico",
   responsavelNome: "Michael Martins",
   responsavelCargo: "Líder Operacional",
+  valorTaxa: 0,
+  prazoEsclarecimentoDias: 10,
 };
+
+// ───────────────────────────── Usuários e permissões ─────────────────────────────
+
+/**
+ * ADMIN_GERAL    – acesso total.
+ * GERENTE        – visualiza tudo (somente leitura) para acompanhar os procedimentos.
+ * ADMINISTRACAO  – analisa os relatórios, registra a providência e cria os logins operacionais.
+ * LIDER/PORTEIRO/RONDA – somente geram relatórios (veem apenas os próprios).
+ * As regras ficam em `src/lib/permissoes.ts`.
+ */
+export type Perfil = "ADMIN_GERAL" | "GERENTE" | "ADMINISTRACAO" | "LIDER" | "PORTEIRO" | "RONDA";
+
+export const PERFIS: Perfil[] = ["ADMIN_GERAL", "GERENTE", "ADMINISTRACAO", "LIDER", "PORTEIRO", "RONDA"];
+
+export const PERFIL_LABEL: Record<Perfil, string> = {
+  ADMIN_GERAL: "Admin Geral",
+  GERENTE: "Gerente",
+  ADMINISTRACAO: "Administração",
+  LIDER: "Líder",
+  PORTEIRO: "Porteiro",
+  RONDA: "Ronda",
+};
+
+export interface Usuario {
+  id: string;
+  nome: string;
+  login: string;
+  perfil: Perfil;
+  ativo: boolean;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+/** Usuário com o hash da senha (somente no servidor). */
+export interface UsuarioComSenha extends Usuario {
+  senhaHash: string;
+}
+
+/** Referência a um usuário gravada nos registros (auditoria). */
+export interface RegistradoPor {
+  id: string;
+  nome: string;
+}
+
+// ───────────────────────────── Providência (decisão da Administração) ─────────────────────────────
+
+/** Regulamento Interno, tópico XV – Atos disciplinares. */
+export type TipoProvidencia = "ARQUIVADO" | "NOTIFICADO" | "MULTADO";
+
+export const PROVIDENCIA_LABEL: Record<TipoProvidencia, string> = {
+  ARQUIVADO: "Arquivado",
+  NOTIFICADO: "Notificado",
+  MULTADO: "Multado",
+};
+
+export type ResultadoEsclarecimento = "PENDENTE" | "ESCLARECEU" | "NAO_ESCLARECEU";
+
+export const ESCLARECIMENTO_LABEL: Record<ResultadoEsclarecimento, string> = {
+  PENDENTE: "Aguardando esclarecimento",
+  ESCLARECEU: "Esclareceu",
+  NAO_ESCLARECEU: "Não esclareceu",
+};
+
+export type SituacaoRecurso = "SEM_RECURSO" | "APRESENTADO" | "DEFERIDO" | "INDEFERIDO";
+
+export const RECURSO_LABEL: Record<SituacaoRecurso, string> = {
+  SEM_RECURSO: "Sem recurso",
+  APRESENTADO: "Recurso apresentado (em análise)",
+  DEFERIDO: "Recurso deferido",
+  INDEFERIDO: "Recurso indeferido",
+};
+
+/** Prazo de recurso: 30 dias a partir do recebimento da notificação ou multa (RI XV, item 5). */
+export const PRAZO_RECURSO_DIAS = 30;
+/** Reincidência: repetir a falta dentro de 12 meses (RI XV, item 3). */
+export const PRAZO_REINCIDENCIA_MESES = 12;
+
+export interface Providencia {
+  tipo: TipoProvidencia;
+  /** O que foi feito / motivo da decisão. */
+  descricao: string;
+  decididoEm: string;
+  decididoPor: RegistradoPor;
+
+  /** Data em que a pessoa recebeu a notificação ou a multa (AAAA-MM-DD). Inicia o prazo de recurso. */
+  dataRecebimento?: string;
+
+  // Notificação (RI XV, 2.2): período para esclarecimento
+  esclarecimentoInicio?: string;
+  esclarecimentoFim?: string;
+  esclarecimentoResultado?: ResultadoEsclarecimento;
+  esclarecimentoObservacao?: string;
+
+  // Multa (RI XV, 2.3 e 2.4)
+  /** Valor em reais. */
+  multaValor?: number;
+  /** Reincidência dentro de 12 meses: multa dobrada. */
+  reincidente?: boolean;
+
+  // Recurso (RI XV, item 5)
+  recursoSituacao?: SituacaoRecurso;
+  recursoObservacao?: string;
+}
+
+/** Registro da linha do tempo (auditoria): quem fez o quê e quando. */
+export interface EventoAuditoria {
+  em: string;
+  por: RegistradoPor;
+  acao: "CRIOU" | "EDITOU" | "PROVIDENCIA" | "ATUALIZOU_PROVIDENCIA" | "REMOVEU_PROVIDENCIA";
+  detalhe?: string;
+}

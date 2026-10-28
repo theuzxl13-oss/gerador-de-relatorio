@@ -8,6 +8,7 @@ import { gerarPdf } from "@/lib/pdf";
 import { dataCurta, montarRelatorio } from "@/lib/relatorio";
 import { DOCUMENTO_NOME, STATUS_LABEL, type Configuracoes, type DocumentoTipo, type Ocorrencia, type StatusOcorrencia } from "@/lib/types";
 import { nomeArquivoPdf } from "@/components/VisualizarRelatorio";
+import { usePode } from "@/components/UsuarioContexto";
 import { Aviso, Botao, BotaoLink, Campo, Carregando, Entrada, SeloStatus, Selecao } from "@/components/ui";
 
 interface Filtros {
@@ -34,6 +35,10 @@ function fundamentacaoCurta(o: Ocorrencia) {
 }
 
 export default function Historico() {
+  const podeEditar = usePode("editarOcorrencia");
+  const podeExcluir = usePode("excluir");
+  const podeRegistrar = usePode("registrar");
+  const verTodas = usePode("verTodas");
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[] | null>(null);
   const [cfg, setCfg] = useState<Configuracoes | null>(null);
   const [f, setF] = useState<Filtros>(VAZIO);
@@ -56,7 +61,7 @@ export default function Historico() {
     if (!ocorrencias) return [];
     return ocorrencias.filter((o) => {
       const fund = [o.fundamentacaoPrincipal, o.fundamentacaoComplementar].filter(Boolean);
-      if (f.busca && !contem([o.protocolo, o.nome, o.ocorrencia, o.descricao, `q${o.quadra} l${o.lote}`, fundamentacaoCurta(o)].join(" "), f.busca)) return false;
+      if (f.busca && !contem([o.protocolo, o.nome, o.ocorrencia, o.descricao, `q${o.quadra} l${o.lote}`, fundamentacaoCurta(o), o.registradoPor?.nome].join(" "), f.busca)) return false;
       if (!contem(o.nome, f.nome) || !contem(o.ocorrencia, f.ocorrencia)) return false;
       if (!mesmoNumero(o.quadra, f.quadra) || !mesmoNumero(o.lote, f.lote)) return false;
       if (f.de && o.data < f.de) return false;
@@ -96,13 +101,13 @@ export default function Historico() {
   const Acoes = ({ o }: { o: Ocorrencia }) => (
     <div className="flex flex-wrap gap-1">
       <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}`}>Visualizar</Link>
-      <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}/editar`}>Editar</Link>
+      {podeEditar && <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}/editar`}>Editar</Link>}
       <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/${o.id}?imprimir=1`}>Imprimir</Link>
       <button type="button" className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50 disabled:opacity-50" disabled={gerandoPdf === o.id} onClick={() => pdf(o)}>
         {gerandoPdf === o.id ? "Gerando..." : "PDF"}
       </button>
-      <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/nova?duplicar=${o.id}`}>Duplicar</Link>
-      <button type="button" className="rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => excluir(o)}>Excluir</button>
+      {podeRegistrar && <Link className="rounded px-2 py-1 text-xs font-medium text-marca-700 hover:bg-marca-50" href={`/ocorrencias/nova?duplicar=${o.id}`}>Duplicar</Link>}
+      {podeExcluir && <button type="button" className="rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => excluir(o)}>Excluir</button>}
     </div>
   );
 

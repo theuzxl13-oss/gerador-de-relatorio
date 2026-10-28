@@ -5,17 +5,36 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api-cliente";
 import { gerarPdf } from "@/lib/pdf";
 import { montarRelatorio } from "@/lib/relatorio";
-import { DOCUMENTO_NOME, STATUS_LABEL, type Configuracoes, type Ocorrencia, type StatusOcorrencia } from "@/lib/types";
+import { DOCUMENTO_NOME, type Configuracoes, type Ocorrencia } from "@/lib/types";
 import { FolhaRelatorio } from "./FolhaRelatorio";
-import { Aviso, Botao, BotaoLink, SeloConfianca, SeloStatus, Selecao } from "./ui";
+import { PainelProvidencia, type Reincidencia } from "./PainelProvidencia";
+import { usePode } from "./UsuarioContexto";
+import { Aviso, Botao, BotaoLink, SeloConfianca, SeloStatus } from "./ui";
 
 export function nomeArquivoPdf(o: Ocorrencia) {
   const id = o.protocolo || o.data;
   return `Relatorio_${id}_Q${o.quadra}_L${o.lote}.pdf`.replace(/[^\w.-]+/g, "_");
 }
 
-export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInicial }: { ocorrencia: Ocorrencia; configuracoes: Configuracoes; novo?: boolean; acaoInicial?: "imprimir" | "pdf" }) {
+export function VisualizarRelatorio({
+  ocorrencia,
+  configuracoes,
+  novo,
+  acaoInicial,
+  reincidencias,
+}: {
+  ocorrencia: Ocorrencia;
+  configuracoes: Configuracoes;
+  novo?: boolean;
+  acaoInicial?: "imprimir" | "pdf";
+  /** Informado apenas para os perfis que acompanham as providências. */
+  reincidencias?: Reincidencia[];
+}) {
   const router = useRouter();
+  const podeEditar = usePode("editarOcorrencia");
+  const podeExcluir = usePode("excluir");
+  const podeRegistrar = usePode("registrar");
+  const podeDecidir = usePode("decidir");
   const [o, setO] = useState(ocorrencia);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState("");
@@ -42,16 +61,6 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acaoInicial]);
 
-  async function alterarStatus(status: StatusOcorrencia) {
-    try {
-      const salvo = await api.atualizarOcorrencia(o.id, { ...o, status });
-      setO(salvo);
-      router.refresh();
-    } catch (e) {
-      setErro((e as Error).message);
-    }
-  }
-
   async function excluir() {
     if (!confirm(`Excluir definitivamente esta ocorrência${o.protocolo ? ` (protocolo ${o.protocolo})` : ""}? Esta ação não pode ser desfeita.`)) return;
     try {
@@ -76,8 +85,8 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
             {gerando ? "Gerando..." : "Gerar PDF"}
           </Botao>
           <Botao variante="secundario" onClick={() => window.print()}>Imprimir</Botao>
-          <BotaoLink href={`/ocorrencias/${o.id}/editar`} variante="secundario">Editar</BotaoLink>
-          <BotaoLink href={`/ocorrencias/nova?duplicar=${o.id}`} variante="secundario">Duplicar</BotaoLink>
+          {podeEditar && <BotaoLink href={`/ocorrencias/${o.id}/editar`} variante="secundario">Editar</BotaoLink>}
+          {podeRegistrar && <BotaoLink href={`/ocorrencias/nova?duplicar=${o.id}`} variante="secundario">Duplicar</BotaoLink>}
         </div>
 
         <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm">
@@ -85,14 +94,11 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
             <span className="font-semibold">{o.protocolo ? `Protocolo ${o.protocolo}` : "Sem protocolo"}</span>
             <SeloStatus status={o.status} />
           </div>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-gray-500">Alterar status</span>
-            <Selecao value={o.status} onChange={(e) => alterarStatus(e.target.value as StatusOcorrencia)}>
-              {Object.entries(STATUS_LABEL).map(([v, r]) => (
-                <option key={v} value={v}>{r}</option>
-              ))}
-            </Selecao>
-          </label>
+          {o.registradoPor && (
+            <p className="text-xs text-gray-500">
+              Registrada por <strong className="text-gray-700">{o.registradoPor.nome}</strong> em {new Date(o.criadoEm).toLocaleString("pt-BR")}
+            </p>
+          )}
           <div className="border-t border-gray-100 pt-3">
             <div className="mb-1 text-xs font-medium text-gray-500">Fundamentação vinculada (registro de auditoria)</div>
             {fundamentacoes.length === 0 ? (
@@ -115,12 +121,28 @@ export function VisualizarRelatorio({ ocorrencia, configuracoes, novo, acaoInici
 
         <div className="flex justify-between">
           <BotaoLink href="/historico" variante="fantasma">← Histórico</BotaoLink>
-          <Botao variante="fantasma" className="!text-red-700 hover:!bg-red-50" onClick={excluir}>Excluir</Botao>
+          {podeExcluir && <Botao variante="fantasma" className="!text-red-700 hover:!bg-red-50" onClick={excluir}>Excluir</Botao>}
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1 overflow-x-auto">
-        <FolhaRelatorio r={conteudo} />
+      <div className="min-w-0 flex-1 space-y-6">
+        {reincidencias && (
+          <PainelProvidencia
+            key={o.atualizadoEm}
+            ocorrencia={o}
+            podeDecidir={podeDecidir}
+            valorTaxa={configuracoes.valorTaxa}
+            prazoEsclarecimentoDias={configuracoes.prazoEsclarecimentoDias}
+            reincidencias={reincidencias}
+            aoAtualizar={(salvo) => {
+              setO(salvo);
+              router.refresh();
+            }}
+          />
+        )}
+        <div className="overflow-x-auto">
+          <FolhaRelatorio r={conteudo} />
+        </div>
       </div>
     </div>
   );
