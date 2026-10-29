@@ -1,0 +1,12 @@
+{
+  "name": "Ocorrências – Fazenda da Ilha",
+  "short_name": "Ocorrências",
+  "description": "Registro de ocorrências e relatórios da Associação Fazenda da Ilha.",
+  "start_url": "/ocorrencias/nova",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b4740",
+  "lang": "pt-BR",
+  "icons": [{ "src": "/logo.png", "sizes": "any", "type": "image/png", "purpose": "any" }]
+}

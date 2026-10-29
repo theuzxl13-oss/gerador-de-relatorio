@@ -3,10 +3,15 @@
 /* eslint-disable @next/next/no-img-element */
 import { useRef, useState } from "react";
 import { api } from "@/lib/api-cliente";
+import { ehFalhaDeRede, novoId } from "@/lib/offline";
 import type { AnexoInfo } from "@/lib/types";
 import { Botao } from "./ui";
 
 export const MAX_FOTOS = 6;
+
+/** Foto do formulário: já enviada (id do servidor) ou guardada no aparelho sem conexão (`dados`, id "local:…"). */
+export type FotoFormulario = AnexoInfo & { dados?: string };
+export const ehFotoLocal = (f: FotoFormulario) => f.id.startsWith("local:");
 const LADO_MAXIMO = 1600; // px – reduz o tamanho para economizar o banco gratuito
 const QUALIDADE = 0.8;
 
@@ -33,7 +38,7 @@ async function reduzir(arquivo: File): Promise<{ dados: string; largura: number;
   }
 }
 
-export function AnexosFotos({ anexos, aoAlterar }: { anexos: AnexoInfo[]; aoAlterar: (a: AnexoInfo[]) => void }) {
+export function AnexosFotos({ anexos, aoAlterar }: { anexos: FotoFormulario[]; aoAlterar: (a: FotoFormulario[]) => void }) {
   const entrada = useRef<HTMLInputElement>(null);
   const [enviando, setEnviando] = useState(0);
   const [erro, setErro] = useState("");
@@ -44,12 +49,18 @@ export function AnexosFotos({ anexos, aoAlterar }: { anexos: AnexoInfo[]; aoAlte
     const arquivos = Array.from(lista).slice(0, MAX_FOTOS - anexos.length);
     if (lista.length > arquivos.length) setErro(`Máximo de ${MAX_FOTOS} imagens por relatório.`);
     setEnviando(arquivos.length);
-    const novos: AnexoInfo[] = [];
+    const novos: FotoFormulario[] = [];
     for (const arquivo of arquivos) {
       try {
         if (!arquivo.type.startsWith("image/")) throw new Error(`"${arquivo.name}" não é uma imagem.`);
         const { dados, largura, altura } = await reduzir(arquivo);
-        novos.push(await api.enviarAnexo({ nome: arquivo.name, tipo: "image/jpeg", largura, altura, dados }));
+        try {
+          novos.push(await api.enviarAnexo({ nome: arquivo.name, tipo: "image/jpeg", largura, altura, dados }));
+        } catch (e) {
+          // Sem conexão: a foto fica no aparelho e é enviada junto com o relatório.
+          if (!ehFalhaDeRede(e)) throw e;
+          novos.push({ id: `local:${novoId()}`, nome: arquivo.name, largura, altura, dados });
+        }
       } catch (e) {
         setErro((e as Error).message || `Não foi possível enviar "${arquivo.name}".`);
       }
@@ -76,10 +87,11 @@ export function AnexosFotos({ anexos, aoAlterar }: { anexos: AnexoInfo[]; aoAlte
         <ul className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
           {anexos.map((a, i) => (
             <li key={a.id} className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-              <img src={`/api/anexos/${a.id}`} alt={a.nome} className="h-32 w-full object-cover" />
+              <img src={a.dados ?? `/api/anexos/${a.id}`} alt={a.nome} className="h-32 w-full object-cover" />
               <div className="flex items-center justify-between gap-1 px-2 py-1.5 text-xs">
                 <span className="truncate text-gray-600" title={a.nome}>
                   {i === 0 ? "1ª (no texto)" : `${i + 1}ª`}
+                  {ehFotoLocal(a) && " · no aparelho"}
                 </span>
                 <span className="flex shrink-0 gap-0.5">
                   <button type="button" className="rounded px-1.5 py-0.5 hover:bg-gray-200 disabled:opacity-30" disabled={i === 0} onClick={() => mover(i, -1)} aria-label="Mover para antes">←</button>

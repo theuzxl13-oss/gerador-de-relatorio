@@ -20,6 +20,8 @@ const LINKS: { href: string; rotulo: string; acao?: Acao }[] = [
 
 async function sair() {
   await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+  // Apaga as páginas guardadas para uso sem conexão (o próximo usuário não as vê).
+  await window.caches?.delete("paginas-v1").catch(() => undefined);
   window.location.href = "/login";
 }
 

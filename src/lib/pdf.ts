@@ -277,15 +277,13 @@ export async function gerarPdfCarta(c: ConteudoCarta, nomeArquivo: string) {
   for (const p of c.paragrafos) d.texto(p, ML, { justificar: true, recuoPrimeira: RECUO, entrelinha: 6.6, espaco: 3 });
   d.y += 6;
   d.assinatura(c.assinatura, ML + RECUO);
+  // Recibo logo abaixo da assinatura: comprova a data de entrega (início do prazo de recurso).
+  d.texto(c.recibo, ML, { tamanho: 10, estilo: "normal", espaco: 4 });
   if (c.dispositivos.length) {
-    d.y += 2;
     d.texto("Dispositivos citados:", ML, { tamanho: 10, estilo: "bolditalic", espaco: 0.5 });
     for (const x of c.dispositivos) {
       d.texto(`${x.citacao}: “${x.texto}”`, ML, { tamanho: 9.5, justificar: true, espaco: 1.2 });
     }
   }
-  if (d.y + 14 > LIMITE) d.novaPagina();
-  d.y += 6;
-  d.texto(c.recibo, ML, { tamanho: 10, estilo: "normal" });
   d.salvar(nomeArquivo);
 }

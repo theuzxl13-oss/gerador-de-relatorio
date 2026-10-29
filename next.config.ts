@@ -42,6 +42,8 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: CABECALHOS },
       // Dados pessoais: nunca guardar em cache (nem na Cloudflare).
       { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
+      // O navegador confere sempre se há versão nova do service worker.
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }, { key: "Service-Worker-Allowed", value: "/" }] },
     ];
   },
 };

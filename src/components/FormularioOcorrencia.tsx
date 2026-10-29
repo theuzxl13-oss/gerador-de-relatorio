@@ -5,10 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api-cliente";
 import { MENSAGEM_NAO_ENCONTRADO, type Candidato, type ResultadoAnalise } from "@/lib/analysis/engine";
 import { criarSnapshot } from "@/lib/citacao";
-import { dataCurta, hojeISO, paragrafoPrincipal } from "@/lib/relatorio";
+import { agoraHHMM, dataCurta, hojeISO, paragrafoPrincipal } from "@/lib/relatorio";
+import { apagarRascunho, ehFalhaDeRede, guardarNaFila, lerRascunho, novoId, salvarRascunho, type FotoLocal } from "@/lib/offline";
 import {
   TRATAMENTOS,
-  type AnexoInfo,
   type FundamentacaoSnapshot,
   type Genero,
   type Norma,
@@ -16,7 +16,8 @@ import {
   type TermoSecao,
   type Tratamento,
 } from "@/lib/types";
-import { AnexosFotos } from "./AnexosFotos";
+import { AnexosFotos, ehFotoLocal, type FotoFormulario } from "./AnexosFotos";
+import { useConexao } from "./useConexao";
 import { NormaDetalhe } from "./NormaDetalhe";
 import { SeletorNorma } from "./SeletorNorma";
 import { useUsuario } from "./UsuarioContexto";
@@ -51,10 +52,6 @@ function ultimaAssinatura(usuarioId?: string): { nome: string; cargo: string } |
 
 const EXIGE_GENERO: Tratamento[] = ["Visitante", "Outro"];
 
-function agoraHHMM() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, termoSecao, assinaturaPadrao }: Props) {
   const router = useRouter();
@@ -75,7 +72,7 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   const [complemento, setComplemento] = useState(base?.complemento ?? "");
   const [protocolo, setProtocolo] = useState(existente?.protocolo ?? "");
   const [gerarProtocolo, setGerarProtocolo] = useState(false);
-  const [anexos, setAnexos] = useState<AnexoInfo[]>(existente?.anexos ?? []);
+  const [anexos, setAnexos] = useState<FotoFormulario[]>(existente?.anexos ?? []);
   const [assinaturaNome, setAssinaturaNome] = useState(existente?.assinaturaNome ?? assinaturaPadrao.nome);
   const [assinaturaCargo, setAssinaturaCargo] = useState(existente?.assinaturaNome ? existente.assinaturaCargo ?? "" : assinaturaPadrao.cargo);
   const [incluirTexto, setIncluirTexto] = useState(base?.incluirTextoNorma ?? incluirTextoPadrao);
@@ -92,6 +89,12 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   const [salvando, setSalvando] = useState(false);
   const [erroGeral, setErroGeral] = useState("");
   const painelRef = useRef<HTMLDivElement>(null);
+  const online = useConexao();
+  // Rascunho automático (somente nova ocorrência, sem duplicação): guardado no aparelho, por usuário.
+  const usaRascunho = !existente && !modelo && !!usuarioId;
+  const [rascunhoCarregado, setRascunhoCarregado] = useState(!usaRascunho);
+  const [rascunhoRestaurado, setRascunhoRestaurado] = useState<string | null>(null);
+  const [guardadoNoAparelho, setGuardadoNoAparelho] = useState(false);
 
   const etapaFundamentacao = !!analise || !!principal || semFundamentacao;
 
@@ -105,8 +108,71 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   }, [existente]);
 
   useEffect(() => {
-    api.normas().then(setNormas).catch(() => setErroGeral("Não foi possível carregar a Base Normativa."));
+    api.normas().then(setNormas).catch((e) => {
+      // Sem conexão a Base Normativa não carrega; o relatório pode ser guardado no aparelho.
+      if (!ehFalhaDeRede(e)) setErroGeral("Não foi possível carregar a Base Normativa.");
+    });
   }, []);
+
+  const camposRascunho = {
+    ocorrencia, descricao, nome, tratamento, genero, tratamentoOutro, quadra, lote, horario, observacoes, complemento,
+    protocolo, gerarProtocolo, assinaturaNome, assinaturaCargo, incluirTexto,
+  };
+
+  useEffect(() => {
+    if (!usaRascunho) return;
+    lerRascunho(usuarioId!)
+      .then((r) => {
+        if (!r) return;
+        const c = r.campos as Partial<typeof camposRascunho> & { anexosServidor?: FotoFormulario[] };
+        if (c.ocorrencia !== undefined) setOcorrencia(c.ocorrencia);
+        if (c.descricao !== undefined) setDescricao(c.descricao);
+        if (c.nome !== undefined) setNome(c.nome);
+        if (c.tratamento !== undefined) setTratamento(c.tratamento);
+        if (c.genero !== undefined) setGenero(c.genero);
+        if (c.tratamentoOutro !== undefined) setTratamentoOutro(c.tratamentoOutro);
+        if (c.quadra !== undefined) setQuadra(c.quadra);
+        if (c.lote !== undefined) setLote(c.lote);
+        if (c.horario !== undefined) setHorario(c.horario);
+        if (c.observacoes !== undefined) setObservacoes(c.observacoes);
+        if (c.complemento !== undefined) setComplemento(c.complemento);
+        if (c.protocolo !== undefined) setProtocolo(c.protocolo);
+        if (c.gerarProtocolo !== undefined) setGerarProtocolo(c.gerarProtocolo);
+        if (c.assinaturaNome) setAssinaturaNome(c.assinaturaNome);
+        if (c.assinaturaCargo !== undefined) setAssinaturaCargo(c.assinaturaCargo);
+        if (c.incluirTexto !== undefined) setIncluirTexto(c.incluirTexto);
+        setAnexos([...(c.anexosServidor ?? []), ...r.fotos]);
+        setRascunhoRestaurado(r.salvoEm);
+      })
+      .catch(() => undefined)
+      .finally(() => setRascunhoCarregado(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usaRascunho, usuarioId]);
+
+  const assinaturaRascunho = JSON.stringify({ camposRascunho, anexos: anexos.map((a) => a.id) });
+  useEffect(() => {
+    if (!usaRascunho || !rascunhoCarregado || guardadoNoAparelho) return;
+    const t = setTimeout(() => {
+      const vazio = !ocorrencia.trim() && !nome.trim() && !quadra.trim() && !lote.trim() && !descricao.trim() && anexos.length === 0;
+      const acao = vazio
+        ? apagarRascunho(usuarioId!)
+        : salvarRascunho({
+            usuarioId: usuarioId!,
+            salvoEm: new Date().toISOString(),
+            campos: { ...camposRascunho, anexosServidor: anexos.filter((a) => !ehFotoLocal(a)) },
+            fotos: anexos.filter(ehFotoLocal) as FotoLocal[],
+          });
+      acao.catch(() => undefined);
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assinaturaRascunho, rascunhoCarregado, guardadoNoAparelho]);
+
+  async function descartarRascunho() {
+    if (!confirm("Descartar o rascunho e limpar o formulário?")) return;
+    await apagarRascunho(usuarioId!).catch(() => undefined);
+    window.location.reload();
+  }
 
   // Alterar a ocorrência após a análise exige nova pesquisa.
   const marcarAlteracao = () => analise && setAnaliseDesatualizada(true);
@@ -158,15 +224,8 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
     setSeletor(null);
   }
 
-  async function salvar(encaminharAnalise = false) {
-    if (!validar()) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-    if (!encaminharAnalise && !principal) return;
-    setSalvando(true);
-    setErroGeral("");
-    const dados: Partial<Ocorrencia> & { gerarProtocolo?: boolean } = {
+  function montarDados(encaminharAnalise: boolean): Partial<Ocorrencia> & { gerarProtocolo?: boolean } {
+    return {
       protocolo: gerarProtocolo ? "" : protocolo.trim(),
       gerarProtocolo,
       versao: existente?.versao ?? 1,
@@ -185,21 +244,79 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
       fundamentacaoComplementar: encaminharAnalise ? undefined : complementar?.snapshot,
       incluirTextoNorma: incluirTexto,
       observacoes: observacoes.trim() || undefined,
-      anexos,
+      anexos: anexos.map(({ id, nome, largura, altura }) => ({ id, nome, largura, altura })),
       assinaturaNome: assinaturaNome.trim() || undefined,
       assinaturaCargo: assinaturaCargo.trim() || undefined,
     };
+  }
+
+  function lembrarAssinatura() {
     try {
       localStorage.setItem(chaveAssinatura(usuarioId), JSON.stringify({ nome: assinaturaNome.trim(), cargo: assinaturaCargo.trim() }));
     } catch {
       /* armazenamento local indisponível */
     }
+  }
+
+  /**
+   * Sem conexão: guarda o relatório neste aparelho (com as fotos) para envio automático
+   * quando a conexão voltar. Sem pesquisa de fundamentação (precisa do servidor), ele
+   * chega à Administração como "Aguardando análise", salvo se a regra já tinha sido escolhida.
+   */
+  async function guardarOffline(encaminharAnalise: boolean) {
+    if (!validar()) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (!usuarioId) return;
+    const { anexos: _ignorar, versao: _v, ...dados } = montarDados(encaminharAnalise || !principal);
+    void _ignorar;
+    void _v;
     try {
+      await guardarNaFila({
+        id: novoId(),
+        usuarioId,
+        registradoEm: new Date().toISOString(),
+        resumo: `${ocorrencia.trim()} – ${nome.trim()} – Q${quadra.trim()} L${lote.trim()} (${horario})`,
+        dados,
+        fotos: anexos.filter(ehFotoLocal) as FotoLocal[],
+        anexosServidor: anexos.filter((a) => !ehFotoLocal(a)).map(({ id, nome, largura, altura }) => ({ id, nome, largura, altura })),
+      });
+      lembrarAssinatura();
+      await apagarRascunho(usuarioId).catch(() => undefined);
+      setGuardadoNoAparelho(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      setErroGeral("Não foi possível guardar no aparelho (armazenamento indisponível, por exemplo em janela anônima). Não feche esta página e tente de novo quando a conexão voltar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function salvar(encaminharAnalise = false) {
+    if (!validar()) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (!encaminharAnalise && !principal) return;
+    setSalvando(true);
+    setErroGeral("");
+    lembrarAssinatura();
+    try {
+      // Fotos guardadas no aparelho são enviadas antes do relatório.
+      const enviadas: FotoFormulario[] = [];
+      for (const a of anexos) {
+        enviadas.push(ehFotoLocal(a) ? await api.enviarAnexo({ nome: a.nome, tipo: "image/jpeg", largura: a.largura, altura: a.altura, dados: a.dados! }) : a);
+      }
+      setAnexos(enviadas);
+      const dados = { ...montarDados(encaminharAnalise), anexos: enviadas.map(({ id, nome, largura, altura }) => ({ id, nome, largura, altura })) };
       const salvo = existente ? await api.atualizarOcorrencia(existente.id, dados) : await api.criarOcorrencia(dados);
+      if (usaRascunho) await apagarRascunho(usuarioId!).catch(() => undefined);
       router.push(`/ocorrencias/${salvo.id}${existente ? "" : "?novo=1"}`);
       router.refresh();
     } catch (e) {
-      setErroGeral((e as Error).message);
+      if (ehFalhaDeRede(e) && !existente) return guardarOffline(encaminharAnalise);
+      setErroGeral(ehFalhaDeRede(e) ? "Sem conexão com o servidor. As alterações não foram salvas: tente de novo quando a conexão voltar." : (e as Error).message);
       setSalvando(false);
     }
   }
@@ -219,8 +336,45 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
   const sugerida = analise?.complementarSugerida;
   const sugeridaMarcada = !!sugerida && complementar?.snapshot.normaId === sugerida.norma.id;
 
+  if (guardadoNoAparelho) {
+    return (
+      <Cartao titulo="Relatório guardado neste aparelho">
+        <div className="space-y-4">
+          <Aviso tipo="sucesso" titulo="Guardado com segurança">
+            Sem conexão no momento. O relatório e as fotos ficaram guardados neste aparelho e serão enviados automaticamente quando a
+            conexão voltar (a faixa amarela no topo mostra o que falta enviar). Não é preciso fazer mais nada.
+          </Aviso>
+          <p className="text-sm text-gray-600">
+            Ele chegará à Administração com a data e a hora em que foi preenchido. Se a regra não foi escolhida, ficará como
+            &ldquo;Aguardando análise&rdquo;.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Botao onClick={() => (window.location.href = "/ocorrencias/nova")}>Registrar outra ocorrência</Botao>
+            <Botao variante="secundario" onClick={() => (window.location.href = "/")}>Ir para o início</Botao>
+          </div>
+        </div>
+      </Cartao>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {!existente && !online && (
+        <Aviso tipo="alerta" titulo="Sem conexão">
+          Você pode preencher normalmente e tirar fotos. Ao terminar, use &ldquo;Guardar no aparelho&rdquo;: o relatório será enviado
+          sozinho quando a conexão voltar. A pesquisa de fundamentação só funciona com conexão.
+        </Aviso>
+      )}
+      {existente && !online && <Aviso tipo="alerta" titulo="Sem conexão">As alterações só podem ser salvas com conexão.</Aviso>}
+      {rascunhoRestaurado && (
+        <Aviso tipo="info" titulo="Rascunho recuperado">
+          Os dados preenchidos em {new Date(rascunhoRestaurado).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })} foram
+          recuperados.{" "}
+          <button type="button" className="font-semibold underline" onClick={descartarRascunho}>
+            Descartar rascunho
+          </button>
+        </Aviso>
+      )}
       <Cartao
         titulo={existente ? `Editar ocorrência${existente.protocolo ? ` – Protocolo ${existente.protocolo}` : ""}` : "1. Dados da ocorrência"}
         acoes={
@@ -321,10 +475,21 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
           </Campo>
         </div>
 
+        {!existente && !online && !etapaFundamentacao && (
+          <div className="mt-5 border-t border-gray-100 pt-4">
+            <AnexosFotos anexos={anexos} aoAlterar={setAnexos} />
+          </div>
+        )}
+
         <div className="mt-5 flex flex-wrap gap-2">
-          <Botao onClick={pesquisarFundamentacao} disabled={analisando} className="w-full sm:w-auto">
+          <Botao onClick={pesquisarFundamentacao} disabled={analisando || !online} className="w-full sm:w-auto">
             {analisando ? "Pesquisando..." : etapaFundamentacao ? "Pesquisar fundamentação novamente" : "Pesquisar fundamentação"}
           </Botao>
+          {!existente && !online && (
+            <Botao variante="sucesso" onClick={() => guardarOffline(!principal)} disabled={salvando} className="w-full sm:w-auto">
+              Guardar no aparelho (enviar quando houver conexão)
+            </Botao>
+          )}
           {!etapaFundamentacao && (
             <Botao variante="secundario" onClick={() => validar() && setSeletor("pesquisar")} className="w-full sm:w-auto">
               Selecionar regra manualmente

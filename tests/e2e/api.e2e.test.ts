@@ -232,6 +232,42 @@ test("anexos: conteúdo verificado, limites, e acesso apenas a quem pode ver a o
   assert.equal((await lider1.req("GET", "/api/anexos/nao-e-uuid")).s, 404);
 });
 
+test("carta de notificação/multa: só Administração/Admin Geral; texto do servidor; emissão auditada", { skip: pular }, async () => {
+  const o = (await adm.req("GET", `/api/ocorrencias/${ids.oc}`)).j;
+  assert.equal(o.providencia?.tipo, "NOTIFICADO");
+  for (const c of [lider1, ger, porteiro]) assert.equal((await c.req("POST", `/api/ocorrencias/${o.id}/carta`)).s, 403);
+  const r = await adm.req("POST", `/api/ocorrencias/${o.id}/carta`);
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.equal(r.j.titulo, "NOTIFICAÇÃO");
+  assert.ok(r.j.paragrafos.join(" ").includes("21/10/2026 a 31/10/2026"));
+  const semProvidencia = await adm.req("POST", `/api/ocorrencias/${ids.ocLeo}/carta`);
+  assert.equal(semProvidencia.s, 400, "sem providência não há carta");
+  const aud = (await ger.req("GET", `/api/auditoria?entidade=ocorrencia&id=${o.id}`)).j as { acao: string }[];
+  assert.ok(aud.some((e) => e.acao === "CARTA_EMITIDA"));
+});
+
+test("fila offline: reenvio não duplica; data do preenchimento aceita até 7 dias; relógio adiantado recusado", { skip: pular }, async () => {
+  const idCliente = "8f0c3f4e-1d2b-4c5a-9e7f-0a1b2c3d4e5f";
+  const ontem = new Date(Date.now() - 26 * 3600_000).toISOString();
+  const corpo = ocorrencia({ ocorrencia: "Registro offline", fundamentacaoPrincipal: undefined, idCliente, registradoOfflineEm: ontem });
+  const a = await lider1.req("POST", "/api/ocorrencias", corpo);
+  assert.equal(a.s, 201, JSON.stringify(a.j));
+  assert.equal(a.j.registradoOfflineEm, ontem);
+  const esperado = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(ontem));
+  assert.equal(a.j.data, esperado, "data do relatório = dia do preenchimento (fuso de São Paulo)");
+  const b = await lider1.req("POST", "/api/ocorrencias", corpo);
+  assert.equal(b.j.id, a.j.id, "mesmo idCliente devolve o mesmo relatório");
+  assert.equal((await lider1.req("GET", "/api/ocorrencias?busca=Registro%20offline")).j.total, 1);
+  // Outro usuário com o mesmo idCliente não "pega" o relatório de Lia.
+  const c = await lider2.req("POST", "/api/ocorrencias", corpo);
+  assert.notEqual(c.j.id, a.j.id);
+  const velho = await lider1.req("POST", "/api/ocorrencias", ocorrencia({ registradoOfflineEm: new Date(Date.now() - 8 * 86_400_000).toISOString() }));
+  assert.equal(velho.s, 400);
+  const futuro = await lider1.req("POST", "/api/ocorrencias", ocorrencia({ registradoOfflineEm: new Date(Date.now() + 3600_000).toISOString() }));
+  assert.equal(futuro.s, 400);
+});
+
+
 test("sessões: token forjado, usuário desativado, senha redefinida e CSRF", { skip: pular }, async () => {
   assert.equal((await http("GET", "/api/ocorrencias", undefined, { cookie: "sessao=eyJ1IjoieCJ9.AAAA" })).s, 401);
 
