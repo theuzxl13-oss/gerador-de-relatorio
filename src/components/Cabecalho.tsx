@@ -14,6 +14,7 @@ const LINKS: { href: string; rotulo: string; acao?: Acao }[] = [
   { href: "/painel", rotulo: "Providências", acao: "painel" },
   { href: "/base-normativa", rotulo: "Base normativa" },
   { href: "/usuarios", rotulo: "Usuários", acao: "usuarios" },
+  { href: "/auditoria", rotulo: "Auditoria", acao: "auditoria" },
   { href: "/configuracoes", rotulo: "Configurações", acao: "configuracoes" },
 ];
 

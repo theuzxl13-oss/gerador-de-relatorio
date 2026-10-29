@@ -96,7 +96,7 @@ export function VisualizarRelatorio({
           </div>
           {o.registradoPor && (
             <p className="text-xs text-gray-500">
-              Registrada por <strong className="text-gray-700">{o.registradoPor.nome}</strong> em {new Date(o.criadoEm).toLocaleString("pt-BR")}
+              Registrada por <strong className="text-gray-700">{o.registradoPor.nome}</strong> em {new Date(o.criadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
             </p>
           )}
           <div className="border-t border-gray-100 pt-3">
@@ -110,8 +110,17 @@ export function VisualizarRelatorio({
                     <div className="font-medium">{f!.citacaoCurta} · {DOCUMENTO_NOME[f!.documento]}</div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-gray-500">
                       <SeloConfianca confianca={f!.origem === "MANUAL" ? undefined : f!.confianca} />
-                      <span>confirmada em {new Date(f!.confirmadoEm).toLocaleString("pt-BR")}</span>
+                      <span>
+                        confirmada em {new Date(f!.confirmadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                        {f!.confirmadoPor ? ` por ${f!.confirmadoPor.nome}` : ""}
+                      </span>
                     </div>
+                    {f!.revisaoPendente && (
+                      <p className="mt-1 text-xs font-medium text-amber-800">
+                        Atenção: no momento do vínculo, o texto desta norma estava marcado para revisão manual (leitura incerta do PDF). Confira o
+                        documento original antes de decidir a providência.
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

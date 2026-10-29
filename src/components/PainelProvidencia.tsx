@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { api } from "@/lib/api-cliente";
+import { api, ErroConflito } from "@/lib/api-cliente";
 import { alertasPrazo, formatarReais, multaMaxima, prazoRecurso, somarDias } from "@/lib/providencia";
 import { dataCurta, hojeISO } from "@/lib/relatorio";
 import {
@@ -67,7 +67,7 @@ const ACAO_LABEL: Record<EventoAuditoria["acao"], string> = {
   REMOVEU_PROVIDENCIA: "Desfez a providência",
 };
 
-const dataHora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+const dataHora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 
 export function PainelProvidencia({
   ocorrencia,
@@ -97,12 +97,12 @@ export function PainelProvidencia({
     setErro("");
     setSalvando(true);
     try {
-      const salvo = await api.registrarProvidencia(ocorrencia.id, { ...f, multaValor: f.multaValor });
+      const salvo = await api.registrarProvidencia(ocorrencia.id, { ...f, multaValor: f.multaValor, versao: ocorrencia.versao });
       aoAtualizar(salvo);
       setF(paraForm(salvo.providencia, prazoEsclarecimentoDias, false));
       setEditando(false);
     } catch (e) {
-      setErro((e as Error).message);
+      setErro(e instanceof ErroConflito ? `${e.message} (Seus dados digitados ainda estão no formulário: copie-os antes de recarregar.)` : (e as Error).message);
     } finally {
       setSalvando(false);
     }
@@ -112,7 +112,7 @@ export function PainelProvidencia({
     if (!confirm("Desfazer a providência? O relatório volta para análise (fica registrado na linha do tempo).")) return;
     setErro("");
     try {
-      const salvo = await api.removerProvidencia(ocorrencia.id);
+      const salvo = await api.removerProvidencia(ocorrencia.id, ocorrencia.versao ?? 1);
       aoAtualizar(salvo);
       setF(paraForm(undefined, prazoEsclarecimentoDias, reincidencias.length > 0));
       setEditando(true);

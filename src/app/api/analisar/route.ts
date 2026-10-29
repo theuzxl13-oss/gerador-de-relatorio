@@ -1,6 +1,6 @@
 import { repositorio } from "@/server/db";
 import { exigirUsuario } from "@/server/auth";
-import { responder } from "@/server/api";
+import { lerCorpo, responder } from "@/server/api";
 import { analisarOcorrencia } from "@/lib/analysis/engine";
 import { ErroValidacao } from "@/server/validacao";
 import type { Tratamento } from "@/lib/types";
@@ -12,9 +12,9 @@ export const dynamic = "force-dynamic";
  * Ponto de extensão para IA: trocar o interpretador passado a analisarOcorrencia.
  */
 export async function POST(req: Request) {
-  const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   return responder(async () => {
     await exigirUsuario();
+    const b = await lerCorpo(req, 32 * 1024);
     const ocorrencia = typeof b?.ocorrencia === "string" ? b.ocorrencia.trim() : "";
     if (!ocorrencia) throw new ErroValidacao("Informe a ocorrência.");
     const normas = await repositorio().listarNormas();

@@ -5,7 +5,7 @@ import type { UsuarioComSenha } from "@/lib/types";
 
 /** Grava o cookie de sessão (httpOnly, SameSite=Lax, Secure em HTTPS). */
 export async function gravarSessao(resp: NextResponse, req: Request, u: UsuarioComSenha) {
-  resp.cookies.set(COOKIE_SESSAO, await criarToken(u.id, u.perfil, await marcaSenha(u.senhaHash)), {
+  resp.cookies.set(COOKIE_SESSAO, await criarToken(u.id, u.perfil, await marcaSenha(u.senhaHash), process.env, Date.now(), { trocarSenha: !!u.trocarSenha }), {
     httpOnly: true,
     sameSite: "lax",
     // HTTPS atrás do proxy (Render/Cloudflare); HTTP apenas em uso local.

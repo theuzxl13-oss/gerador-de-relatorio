@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { repositorio } from "@/server/db";
-import { ErroAcesso, exigirUsuario } from "@/server/auth";
+import { exigirUsuario, referencia } from "@/server/auth";
+import { respostaDeErro } from "@/server/api";
 import { prazoRecurso } from "@/lib/providencia";
 import { ESCLARECIMENTO_LABEL, PROVIDENCIA_LABEL, RECURSO_LABEL, STATUS_LABEL } from "@/lib/types";
 
@@ -17,13 +18,14 @@ function celula(v: unknown): string {
 
 /** Planilha (CSV, separada por ponto e vírgula) com todos os relatórios e providências. */
 export async function GET() {
+  let lista;
   try {
-    await exigirUsuario("painel");
+    const u = await exigirUsuario("painel");
+    lista = await repositorio().listarOcorrencias();
+    await repositorio().registrarAuditoria({ usuario: referencia(u), acao: "EXPORTACAO_CSV", entidade: "sistema", detalhe: { registros: lista.length } });
   } catch (e) {
-    if (e instanceof ErroAcesso) return NextResponse.json({ erro: e.message }, { status: e.status });
-    throw e;
+    return respostaDeErro(e);
   }
-  const lista = await repositorio().listarOcorrencias();
   const cab = [
     "Protocolo", "Data", "Horário", "Ocorrência", "Nome", "Tratamento", "Quadra", "Lote", "Fundamentação",
     "Situação", "Registrado por", "Providência", "Descrição da providência", "Decidido por", "Decidido em",

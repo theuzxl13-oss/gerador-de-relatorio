@@ -85,5 +85,7 @@ export function criarSnapshot(
     origem,
     confianca,
     confirmadoEm: new Date().toISOString(),
+    normaVersao: n.atualizadoEm ?? "original",
+    ...(n.revisaoManual ? { revisaoPendente: true } : {}),
   };
 }

@@ -75,7 +75,15 @@ export interface ResultadoAnalise {
   complementarSugerida?: Candidato;
   candidatos: Candidato[];
   alertas: string[];
+  /**
+   * Mais de uma regra diferente com a mesma confiança e pontuação próxima da principal:
+   * a escolha precisa de conferência humana (a sugestão nunca é decisão definitiva).
+   */
+  ambiguo: boolean;
 }
+
+/** Pontuação relativa mínima para considerar dois candidatos empatados. */
+const LIMIAR_EMPATE = 0.85;
 
 export const MENSAGEM_NAO_ENCONTRADO =
   "Nenhum artigo ou item foi identificado automaticamente com segurança. Selecione manualmente a fundamentação ou encaminhe a ocorrência para análise da Administração.";
@@ -301,6 +309,15 @@ export async function analisarOcorrencia(
     }
   }
 
+  const ambiguo =
+    !!principal &&
+    candidatos.some(
+      (c) => c !== principal && c.norma.id !== complementar?.norma.id && c.confianca === principal.confianca && c.pontuacao >= principal.pontuacao * LIMIAR_EMPATE,
+    );
+  if (ambiguo) {
+    alertas.push("Mais de uma regra corresponde a esta ocorrência com confiança parecida. Confira as opções antes de confirmar (ou encaminhe para análise da Administração).");
+  }
+
   if (interpretacao.categorias.length === 0) {
     alertas.push("Nenhuma categoria de ocorrência foi reconhecida no texto informado.");
   }
@@ -308,7 +325,7 @@ export async function analisarOcorrencia(
     for (const m of c.motivos) if (m.startsWith("Atenção")) alertas.push(m);
   }
 
-  return { interpretacao, encontrado, principal, complementar, complementarSugerida, candidatos, alertas: [...new Set(alertas)] };
+  return { interpretacao, encontrado, principal, complementar, complementarSugerida, candidatos, alertas: [...new Set(alertas)], ambiguo };
 }
 
 /**

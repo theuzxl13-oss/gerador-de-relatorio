@@ -3,24 +3,29 @@ import { Pool, type PoolClient } from "pg";
 import { NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
 import { normalizarPerfil } from "@/lib/permissoes";
-import { CONFIGURACOES_PADRAO, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
-import type { NovoAnexo, NovaOcorrencia, Repositorio } from "./repositorio";
+import { CONFIGURACOES_PADRAO, type AnexoInfo, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
+import { configurarConexao } from "./config";
+import { ErroConflito, ErroValidacao } from "./validacao";
+import type { Alteracao, EventoAuditoriaGravado, NovoAnexo, NovaOcorrencia, RegistroAuditoria, Repositorio } from "./repositorio";
 
-const UUID = /^[0-9a-f-]{36}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Esquema mínimo. Os registros completos ficam em JSONB (`dados`), e as
- * colunas extras servem para unicidade, ordenação e consultas futuras.
- * Executado automaticamente na primeira conexão (idempotente).
+ * Migrações versionadas. Cada uma roda uma única vez, em ordem, dentro de uma
+ * transação com trava (pg_advisory_xact_lock), e fica registrada em schema_migracoes.
+ * Todas são aditivas (não apagam dados). O desfazer de cada uma está em docs/MIGRACOES.md.
  */
-export const SCHEMA_SQL = `
+export const MIGRACOES: { versao: number; descricao: string; sql: string }[] = [
+  {
+    versao: 1,
+    descricao: "Esquema base (normas, ocorrências, anexos, usuários, configurações)",
+    sql: `
 create table if not exists normas (
   id          text primary key,
   documento   text not null check (documento in ('ESTATUTO', 'REGULAMENTO')),
   dados       jsonb not null,
   atualizado_em timestamptz not null default now()
 );
-
 create table if not exists ocorrencias (
   id          uuid primary key,
   protocolo   text not null default '',
@@ -30,15 +35,12 @@ create table if not exists ocorrencias (
   atualizado_em timestamptz not null default now()
 );
 create index if not exists ocorrencias_data_idx on ocorrencias (data desc);
--- O protocolo passou a ser opcional/informado pelo usuário: remove a unicidade antiga.
 alter table ocorrencias drop constraint if exists ocorrencias_protocolo_key;
 create index if not exists ocorrencias_protocolo_idx on ocorrencias (protocolo);
-
 create table if not exists protocolo_sequencia (
   ano     integer primary key,
   ultimo  integer not null
 );
-
 create table if not exists anexos (
   id            uuid primary key,
   ocorrencia_id uuid references ocorrencias(id) on delete cascade,
@@ -50,7 +52,6 @@ create table if not exists anexos (
   criado_em     timestamptz not null default now()
 );
 create index if not exists anexos_ocorrencia_idx on anexos (ocorrencia_id);
-
 create table if not exists usuarios (
   id            uuid primary key,
   login         text not null,
@@ -58,40 +59,63 @@ create table if not exists usuarios (
   atualizado_em timestamptz not null default now()
 );
 create unique index if not exists usuarios_login_idx on usuarios (lower(login));
-
 create table if not exists configuracoes (
   id    integer primary key default 1 check (id = 1),
   dados jsonb not null
+);`,
+  },
+  {
+    versao: 2,
+    descricao: "Versão das ocorrências (concorrência), dono das fotos e trilha de auditoria somente-inserção",
+    sql: `
+alter table ocorrencias add column if not exists versao integer not null default 1;
+alter table anexos add column if not exists enviado_por text;
+create index if not exists anexos_pendentes_idx on anexos (enviado_por) where ocorrencia_id is null;
+create table if not exists auditoria (
+  id           bigserial primary key,
+  em           timestamptz not null default now(),
+  usuario_id   text,
+  usuario_nome text,
+  acao         text not null,
+  entidade     text not null,
+  entidade_id  text,
+  resultado    text not null default 'SUCESSO' check (resultado in ('SUCESSO', 'NEGADO', 'FALHA')),
+  detalhe      jsonb not null default '{}'::jsonb
 );
-`;
+create index if not exists auditoria_em_idx on auditoria (em desc);
+create index if not exists auditoria_entidade_idx on auditoria (entidade, entidade_id);
+create or replace function auditoria_somente_insercao() returns trigger language plpgsql as $$
+begin
+  raise exception 'A trilha de auditoria não pode ser alterada nem apagada.';
+end
+$$;
+drop trigger if exists auditoria_imutavel on auditoria;
+create trigger auditoria_imutavel before update or delete on auditoria
+  for each row execute function auditoria_somente_insercao();
+drop trigger if exists auditoria_sem_truncate on auditoria;
+create trigger auditoria_sem_truncate before truncate on auditoria
+  for each statement execute function auditoria_somente_insercao();`,
+  },
+];
 
-/**
- * Prepara a conexão: remove da URL os parâmetros de SSL (sslmode, channel_binding...)
- * e aplica SSL criptografado sem exigir certificado de autoridade pública.
- * Necessário para o Supabase (certificado próprio) e compatível com o Neon.
- */
-export function configurarConexao(url: string): { connectionString: string; ssl?: { rejectUnauthorized: false } } {
-  let u: URL;
-  try {
-    u = new URL(url.trim());
-  } catch {
-    return { connectionString: url.trim() };
-  }
-  const sslmode = u.searchParams.get("sslmode");
-  for (const p of ["sslmode", "channel_binding", "sslrootcert", "sslcert", "sslkey", "uselibpqcompat", "sslnegotiation"]) u.searchParams.delete(p);
-  const local = ["localhost", "127.0.0.1", "postgres"].includes(u.hostname);
-  const usarSSL = sslmode !== "disable" && !local;
-  return { connectionString: u.toString(), ssl: usarSSL ? { rejectUnauthorized: false } : undefined };
-}
+/** Índice que garante protocolo único (ignorando maiúsculas/espaços; protocolo em branco é permitido). */
+const INDICE_PROTOCOLO_UNICO = "ocorrencias_protocolo_unico";
+const SQL_DUPLICADOS = `select lower(btrim(protocolo)) as protocolo, count(*)::int as n
+  from ocorrencias where btrim(protocolo) <> '' group by 1 having count(*) > 1 order by 1 limit 50`;
 
 export class RepositorioPostgres implements Repositorio {
   readonly tipo = "postgres" as const;
   private pool: Pool;
   private pronto: Promise<void> | null = null;
+  private avisos: string[] = [];
 
   constructor(url: string) {
+    // Lança ErroConfiguracao (sem revelar a URL) se a configuração de TLS for insegura ou inválida.
+    const { modoSSL, aviso, ...conexao } = configurarConexao(url);
+    if (aviso) console.warn("[banco]", aviso);
+    console.info(`[banco] TLS: ${modoSSL}`);
     this.pool = new Pool({
-      ...configurarConexao(url),
+      ...conexao,
       max: 5,
       // Neon/Supabase encerram conexões ociosas: libera antes e evita derrubar o servidor.
       idleTimeoutMillis: 10_000,
@@ -99,6 +123,11 @@ export class RepositorioPostgres implements Repositorio {
       keepAlive: true,
     });
     this.pool.on("error", (e) => console.error("[banco] conexão ociosa encerrada pelo servidor:", e.message));
+  }
+
+  /** Fecha as conexões (encerramento do servidor e testes). */
+  async encerrar() {
+    await this.pool.end();
   }
 
   private iniciar(): Promise<void> {
@@ -111,28 +140,102 @@ export class RepositorioPostgres implements Repositorio {
     return this.pronto;
   }
 
-  private async migrar() {
+  /** Executa `fn` em transação; desfaz em qualquer erro e sempre libera a conexão. */
+  private async transacao<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
     const c = await this.pool.connect();
     try {
-      // Trava por transação (funciona também no pooler em modo "transaction" do Supabase).
       await c.query("begin");
+      const r = await fn(c);
+      await c.query("commit");
+      return r;
+    } catch (e) {
+      await c.query("rollback").catch(() => undefined);
+      throw traduzirErro(e);
+    } finally {
+      c.release();
+    }
+  }
+
+  private async migrar() {
+    await this.transacao(async (c) => {
+      // Trava por transação (funciona também no pooler em modo "transaction" do Supabase).
       await c.query("select pg_advisory_xact_lock(727001)");
-      await c.query(SCHEMA_SQL);
-      const { rows } = await c.query("select count(*)::int as n from normas");
-      if (rows[0].n === 0) await this.inserirNormasOriginais(c);
+      await c.query(`create table if not exists schema_migracoes (
+        versao integer primary key, descricao text not null, aplicada_em timestamptz not null default now())`);
+      const { rows } = await c.query("select versao from schema_migracoes");
+      const aplicadas = new Set(rows.map((r) => r.versao as number));
+      for (const m of MIGRACOES) {
+        if (aplicadas.has(m.versao)) continue;
+        await c.query(m.sql);
+        await c.query("insert into schema_migracoes (versao, descricao) values ($1, $2)", [m.versao, m.descricao]);
+        console.info(`[banco] migração ${m.versao} aplicada: ${m.descricao}`);
+      }
+
+      // Protocolo único: só cria a restrição se não houver repetidos. Nunca altera dados existentes.
+      const idx = await c.query("select 1 from pg_indexes where indexname = $1", [INDICE_PROTOCOLO_UNICO]);
+      if (idx.rowCount === 0) {
+        const dup = await c.query(SQL_DUPLICADOS);
+        if (dup.rowCount === 0) {
+          await c.query(`create unique index ${INDICE_PROTOCOLO_UNICO} on ocorrencias (lower(btrim(protocolo))) where btrim(protocolo) <> ''`);
+          console.info("[banco] restrição de protocolo único criada.");
+        } else {
+          const lista = dup.rows.map((r) => `${r.protocolo} (${r.n}x)`).join(", ");
+          this.avisos.push(
+            `Há protocolos repetidos (${lista}). A restrição de unicidade no banco não foi criada: corrija os protocolos (Editar) e reinicie o serviço. O sistema continua recusando novos repetidos.`,
+          );
+          console.warn("[banco] protocolos repetidos impedem a restrição de unicidade:", lista);
+        }
+      }
+
+      const { rows: n } = await c.query("select count(*)::int as n from normas");
+      if (n[0].n === 0) await this.inserirNormasOriginais(c);
       const cfg = await c.query("select 1 from configuracoes where id = 1");
       if (cfg.rowCount === 0) {
         await c.query("insert into configuracoes (id, dados) values (1, $1)", [CONFIGURACOES_PADRAO]);
         // Primeira execução: ocorrências demonstrativas somente com SEED_DEMO=true (banco de produção começa vazio).
         if (process.env.SEED_DEMO === "true") await this.inserirDemonstracao(c);
       }
-      await c.query("commit");
-    } catch (e) {
-      await c.query("rollback").catch(() => undefined);
-      throw e;
-    } finally {
-      c.release();
-    }
+    });
+  }
+
+  async diagnosticoIntegridade() {
+    await this.iniciar();
+    return [...this.avisos];
+  }
+
+  private async auditar(c: PoolClient | Pool, a: RegistroAuditoria) {
+    await c.query(
+      `insert into auditoria (usuario_id, usuario_nome, acao, entidade, entidade_id, resultado, detalhe)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [a.usuario?.id ?? null, a.usuario?.nome ?? null, a.acao, a.entidade, a.entidadeId ?? null, a.resultado ?? "SUCESSO", a.detalhe ?? {}],
+    );
+  }
+
+  async registrarAuditoria(a: RegistroAuditoria) {
+    await this.iniciar();
+    await this.auditar(this.pool, a);
+  }
+
+  async listarAuditoria(f: { limite: number; antesDe?: string; entidade?: string; entidadeId?: string }) {
+    await this.iniciar();
+    const { rows } = await this.pool.query(
+      `select id::text, em, usuario_id, usuario_nome, acao, entidade, entidade_id, resultado, detalhe from auditoria
+       where ($1::bigint is null or id < $1::bigint) and ($2::text is null or entidade = $2) and ($3::text is null or entidade_id = $3)
+       order by auditoria.id desc limit $4`,
+      [f.antesDe && /^\d+$/.test(f.antesDe) ? f.antesDe : null, f.entidade ?? null, f.entidadeId ?? null, Math.min(Math.max(f.limite, 1), 200)],
+    );
+    return rows.map(
+      (r): EventoAuditoriaGravado => ({
+        id: r.id,
+        em: new Date(r.em).toISOString(),
+        usuario: r.usuario_id ? { id: r.usuario_id, nome: r.usuario_nome ?? "" } : null,
+        acao: r.acao,
+        entidade: r.entidade,
+        entidadeId: r.entidade_id ?? undefined,
+        resultado: r.resultado,
+        detalhe: r.detalhe,
+      }),
+    );
   }
 
   private async inserirNormasOriginais(c: PoolClient) {
@@ -146,7 +249,7 @@ export class RepositorioPostgres implements Repositorio {
     const normas = rows.map((r) => r.dados as Norma);
     for (const o of ocorrenciasDemonstrativas(normas)) {
       const protocolo = await this.gerarProtocolo(c, Number(o.data.slice(0, 4)));
-      const ocorrencia: Ocorrencia = { ...o, id: randomUUID(), protocolo };
+      const ocorrencia: Ocorrencia = { ...o, id: randomUUID(), protocolo, versao: 1 };
       await c.query("insert into ocorrencias (id, protocolo, data, dados, criado_em, atualizado_em) values ($1, $2, $3, $4, $5, $5)", [
         ocorrencia.id, protocolo, ocorrencia.data, ocorrencia, ocorrencia.criadoEm,
       ]);
@@ -157,7 +260,7 @@ export class RepositorioPostgres implements Repositorio {
    * Incremento atômico da sequência do ano (seguro com acessos simultâneos).
    * Pula números já usados manualmente.
    */
-  private async gerarProtocolo(c: PoolClient | Pool, ano: number): Promise<string> {
+  private async gerarProtocolo(c: PoolClient, ano: number): Promise<string> {
     for (;;) {
       const { rows } = await c.query(
         `insert into protocolo_sequencia (ano, ultimo) values ($1, 1)
@@ -166,7 +269,7 @@ export class RepositorioPostgres implements Repositorio {
         [ano],
       );
       const protocolo = `${ano}-${String(rows[0].ultimo).padStart(4, "0")}`;
-      const existe = await c.query("select 1 from ocorrencias where protocolo = $1 limit 1", [protocolo]);
+      const existe = await c.query("select 1 from ocorrencias where lower(btrim(protocolo)) = lower($1) limit 1", [protocolo]);
       if (existe.rowCount === 0) return protocolo;
     }
   }
@@ -176,7 +279,7 @@ export class RepositorioPostgres implements Repositorio {
     const p = protocolo.trim();
     if (!p) return false;
     const { rowCount } = await this.pool.query(
-      "select 1 from ocorrencias where lower(protocolo) = lower($1) and ($2::uuid is null or id <> $2::uuid) limit 1",
+      "select 1 from ocorrencias where lower(btrim(protocolo)) = lower($1) and ($2::uuid is null or id <> $2::uuid) limit 1",
       [p, excetoId && UUID.test(excetoId) ? excetoId : null],
     );
     return (rowCount ?? 0) > 0;
@@ -188,103 +291,127 @@ export class RepositorioPostgres implements Repositorio {
     return rows.map((r) => r.dados as Norma);
   }
 
-  async salvarNorma(norma: Norma) {
+  async salvarNorma(norma: Norma, auditoria: RegistroAuditoria) {
     await this.iniciar();
     const n = { ...norma, atualizadoEm: new Date().toISOString() };
-    await this.pool.query(
-      `insert into normas (id, documento, dados, atualizado_em) values ($1, $2, $3, now())
-       on conflict (id) do update set documento = excluded.documento, dados = excluded.dados, atualizado_em = now()`,
-      [n.id, n.documento, n],
-    );
+    await this.transacao(async (c) => {
+      await c.query(
+        `insert into normas (id, documento, dados, atualizado_em) values ($1, $2, $3, now())
+         on conflict (id) do update set documento = excluded.documento, dados = excluded.dados, atualizado_em = now()`,
+        [n.id, n.documento, n],
+      );
+      await this.auditar(c, auditoria);
+    });
     return n;
   }
 
-  async excluirNorma(id: string) {
+  async excluirNorma(id: string, auditoria: RegistroAuditoria) {
     await this.iniciar();
-    await this.pool.query("delete from normas where id = $1", [id]);
+    await this.transacao(async (c) => {
+      await c.query("delete from normas where id = $1", [id]);
+      await this.auditar(c, auditoria);
+    });
   }
 
-  async restaurarNormas() {
+  async restaurarNormas(auditoria: RegistroAuditoria) {
     await this.iniciar();
-    const c = await this.pool.connect();
-    try {
-      await c.query("begin");
+    await this.transacao(async (c) => {
       await c.query("delete from normas");
       await this.inserirNormasOriginais(c);
-      await c.query("commit");
-    } catch (e) {
-      await c.query("rollback");
-      throw e;
-    } finally {
-      c.release();
-    }
+      await this.auditar(c, auditoria);
+    });
+  }
+
+  private static ler(r: { dados: Ocorrencia; versao?: number }): Ocorrencia {
+    return { ...r.dados, versao: r.versao ?? r.dados.versao ?? 1 };
   }
 
   async listarOcorrencias() {
     await this.iniciar();
-    const { rows } = await this.pool.query("select dados from ocorrencias order by data desc, criado_em desc");
-    return rows.map((r) => r.dados as Ocorrencia);
+    const { rows } = await this.pool.query("select dados, versao from ocorrencias order by data desc, criado_em desc");
+    return rows.map(RepositorioPostgres.ler);
   }
 
   async obterOcorrencia(id: string) {
     await this.iniciar();
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-    const { rows } = await this.pool.query("select dados from ocorrencias where id = $1", [id]);
-    return (rows[0]?.dados as Ocorrencia) ?? null;
+    if (!UUID.test(id)) return null;
+    const { rows } = await this.pool.query("select dados, versao from ocorrencias where id = $1", [id]);
+    return rows[0] ? RepositorioPostgres.ler(rows[0]) : null;
   }
 
-  async criarOcorrencia(dados: NovaOcorrencia, gerarProtocolo = false) {
+  async criarOcorrencia(dados: NovaOcorrencia, opcoes: { gerarProtocolo?: boolean; usuarioId: string }, auditoria: (o: Ocorrencia) => RegistroAuditoria) {
     await this.iniciar();
-    const c = await this.pool.connect();
-    try {
-      await c.query("begin");
-      const protocolo = gerarProtocolo ? await this.gerarProtocolo(c, Number(dados.data.slice(0, 4))) : (dados.protocolo ?? "").trim();
+    return this.transacao(async (c) => {
+      const protocolo = opcoes.gerarProtocolo ? await this.gerarProtocolo(c, Number(dados.data.slice(0, 4))) : (dados.protocolo ?? "").trim();
       const agora = new Date().toISOString();
-      const o: Ocorrencia = { ...dados, id: randomUUID(), protocolo, criadoEm: agora, atualizadoEm: agora };
-      await c.query("insert into ocorrencias (id, protocolo, data, dados) values ($1, $2, $3, $4)", [o.id, protocolo, o.data, o]);
-      await this.vincularAnexos(c, o);
-      await c.query("commit");
+      const o: Ocorrencia = { ...dados, id: randomUUID(), protocolo, criadoEm: agora, atualizadoEm: agora, versao: 1 };
+      o.anexos = await this.vincularAnexos(c, o, opcoes.usuarioId);
+      await c.query("insert into ocorrencias (id, protocolo, data, dados, versao) values ($1, $2, $3, $4, 1)", [o.id, protocolo, o.data, o]);
+      await this.confirmarVinculo(c, o);
+      await this.auditar(c, auditoria(o));
       return o;
-    } catch (e) {
-      await c.query("rollback");
-      throw e;
-    } finally {
-      c.release();
-    }
+    });
   }
 
-  async atualizarOcorrencia(id: string, dados: Partial<NovaOcorrencia>, gerarProtocolo = false) {
-    const atual = await this.obterOcorrencia(id);
-    if (!atual) return null;
-    const o: Ocorrencia = {
-      ...atual,
-      ...dados,
-      id: atual.id,
-      protocolo: (dados.protocolo ?? atual.protocolo ?? "").trim(),
-      criadoEm: atual.criadoEm,
-      atualizadoEm: new Date().toISOString(),
-    };
-    const c = await this.pool.connect();
-    try {
-      await c.query("begin");
-      if (gerarProtocolo) o.protocolo = await this.gerarProtocolo(c, Number(o.data.slice(0, 4)));
-      await c.query("update ocorrencias set data = $2, protocolo = $3, dados = $4, atualizado_em = now() where id = $1", [id, o.data, o.protocolo, o]);
-      await this.vincularAnexos(c, o);
-      await c.query("commit");
-    } catch (e) {
-      await c.query("rollback");
-      throw e;
-    } finally {
-      c.release();
-    }
-    return o;
+  async alterarOcorrencia(id: string, decidir: (atual: Ocorrencia) => Alteracao | Promise<Alteracao>, opcoes: { versaoEsperada?: number; usuarioId: string }) {
+    await this.iniciar();
+    if (!UUID.test(id)) return null;
+    return this.transacao(async (c) => {
+      // Trava o registro até o fim da transação: alterações simultâneas esperam a vez.
+      const { rows } = await c.query("select dados, versao from ocorrencias where id = $1 for update", [id]);
+      if (!rows[0]) return null;
+      const atual = RepositorioPostgres.ler(rows[0]);
+      if (opcoes.versaoEsperada !== undefined && opcoes.versaoEsperada !== atual.versao) {
+        throw new ErroConflito("Este relatório foi alterado por outra pessoa depois que você o abriu. Recarregue a página para ver a versão atual.");
+      }
+      const alt = await decidir(atual);
+      const o: Ocorrencia = {
+        ...atual,
+        ...alt.dados,
+        id: atual.id,
+        protocolo: (alt.dados.protocolo ?? atual.protocolo ?? "").trim(),
+        criadoEm: atual.criadoEm,
+        atualizadoEm: new Date().toISOString(),
+        versao: (atual.versao ?? 1) + 1,
+      };
+      if (alt.gerarProtocolo) o.protocolo = await this.gerarProtocolo(c, Number(o.data.slice(0, 4)));
+      if ("anexos" in alt.dados) o.anexos = await this.vincularAnexos(c, o, opcoes.usuarioId);
+      await c.query("update ocorrencias set data = $2, protocolo = $3, dados = $4, versao = $5, atualizado_em = now() where id = $1", [
+        id, o.data, o.protocolo, o, o.versao,
+      ]);
+      if ("anexos" in alt.dados) await this.confirmarVinculo(c, o);
+      if (alt.auditoria) await this.auditar(c, alt.auditoria);
+      return o;
+    });
   }
 
-  /** Vincula as fotos à ocorrência e remove as que deixaram de fazer parte dela. */
-  private async vincularAnexos(c: PoolClient, o: Ocorrencia) {
-    const ids = (o.anexos ?? []).map((a) => a.id).filter((x) => UUID.test(x));
+  /**
+   * Prepara o vínculo das fotos: cada foto informada precisa já pertencer a esta
+   * ocorrência ou estar pendente e ter sido enviada pelo próprio usuário. Os dados
+   * (nome, dimensões) vêm do banco, não do navegador. Remove as fotos retiradas.
+   */
+  private async vincularAnexos(c: PoolClient, o: Ocorrencia, usuarioId: string): Promise<AnexoInfo[] | undefined> {
+    const ids = [...new Set((o.anexos ?? []).map((a) => a.id))];
+    if (ids.some((x) => !UUID.test(x))) throw new ErroValidacao("Imagem inválida.");
     await c.query("delete from anexos where ocorrencia_id = $1 and not (id = any($2::uuid[]))", [o.id, ids]);
-    if (ids.length) await c.query("update anexos set ocorrencia_id = $1 where id = any($2::uuid[]) and (ocorrencia_id is null or ocorrencia_id = $1)", [o.id, ids]);
+    if (!ids.length) return undefined;
+    const { rows } = await c.query(
+      `select id::text, nome, largura, altura from anexos
+       where id = any($1::uuid[]) and (ocorrencia_id = $2 or (ocorrencia_id is null and enviado_por = $3))`,
+      [ids, o.id, usuarioId],
+    );
+    if (rows.length !== ids.length) throw new ErroValidacao("Uma das imagens não existe mais ou foi enviada por outro usuário. Envie a foto novamente.");
+    const porId = new Map(rows.map((r) => [r.id as string, r]));
+    return ids.map((id) => {
+      const r = porId.get(id)!;
+      return { id, nome: r.nome, largura: r.largura, altura: r.altura };
+    });
+  }
+
+  /** Executado depois que a ocorrência existe (chave estrangeira). */
+  private async confirmarVinculo(c: PoolClient, o: Ocorrencia) {
+    const ids = (o.anexos ?? []).map((a) => a.id);
+    if (ids.length) await c.query("update anexos set ocorrencia_id = $1 where id = any($2::uuid[]) and ocorrencia_id is null", [o.id, ids]);
   }
 
   async salvarAnexo(a: NovoAnexo) {
@@ -292,8 +419,8 @@ export class RepositorioPostgres implements Repositorio {
     // Limpa fotos enviadas e nunca vinculadas (formulário abandonado) há mais de 1 dia.
     await this.pool.query("delete from anexos where ocorrencia_id is null and criado_em < now() - interval '1 day'");
     const id = randomUUID();
-    await this.pool.query("insert into anexos (id, nome, tipo, largura, altura, dados) values ($1, $2, $3, $4, $5, $6)", [
-      id, a.nome, a.tipo, a.largura, a.altura, a.dados,
+    await this.pool.query("insert into anexos (id, nome, tipo, largura, altura, dados, enviado_por) values ($1, $2, $3, $4, $5, $6, $7)", [
+      id, a.nome, a.tipo, a.largura, a.altura, a.dados, a.enviadoPor,
     ]);
     return { id, nome: a.nome, largura: a.largura, altura: a.altura };
   }
@@ -301,31 +428,39 @@ export class RepositorioPostgres implements Repositorio {
   async obterAnexo(id: string) {
     await this.iniciar();
     if (!UUID.test(id)) return null;
-    const { rows } = await this.pool.query("select tipo, dados from anexos where id = $1", [id]);
-    return rows[0] ? { tipo: rows[0].tipo as string, dados: rows[0].dados as Buffer } : null;
+    const { rows } = await this.pool.query("select tipo, dados, ocorrencia_id::text, enviado_por from anexos where id = $1", [id]);
+    const r = rows[0];
+    return r ? { tipo: r.tipo as string, dados: r.dados as Buffer, ocorrenciaId: r.ocorrencia_id ?? undefined, enviadoPor: r.enviado_por ?? undefined } : null;
   }
 
-  async excluirOcorrencia(id: string) {
+  async contarAnexosPendentes(usuarioId: string) {
     await this.iniciar();
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return;
-    await this.pool.query("delete from ocorrencias where id = $1", [id]);
+    const { rows } = await this.pool.query(
+      "select count(*)::int as n from anexos where ocorrencia_id is null and enviado_por = $1 and criado_em > now() - interval '1 day'",
+      [usuarioId],
+    );
+    return rows[0].n as number;
   }
 
-  async restaurarDemonstracao() {
+  async excluirOcorrencia(id: string, auditoria: RegistroAuditoria) {
     await this.iniciar();
-    const c = await this.pool.connect();
-    try {
-      await c.query("begin");
+    if (!UUID.test(id)) return false;
+    return this.transacao(async (c) => {
+      const r = await c.query("delete from ocorrencias where id = $1", [id]);
+      if (!r.rowCount) return false;
+      await this.auditar(c, auditoria);
+      return true;
+    });
+  }
+
+  async restaurarDemonstracao(auditoria: RegistroAuditoria) {
+    await this.iniciar();
+    await this.transacao(async (c) => {
       await c.query("delete from ocorrencias");
       await c.query("delete from protocolo_sequencia");
       await this.inserirDemonstracao(c);
-      await c.query("commit");
-    } catch (e) {
-      await c.query("rollback");
-      throw e;
-    } finally {
-      c.release();
-    }
+      await this.auditar(c, auditoria);
+    });
   }
 
   async listarUsuarios() {
@@ -347,14 +482,33 @@ export class RepositorioPostgres implements Repositorio {
     return rows[0] ? comPerfil(rows[0].dados as UsuarioComSenha) : null;
   }
 
-  async salvarUsuario(u: UsuarioComSenha) {
+  async salvarUsuario(u: UsuarioComSenha, auditoria?: RegistroAuditoria) {
     await this.iniciar();
-    await this.pool.query(
-      `insert into usuarios (id, login, dados) values ($1, $2, $3)
-       on conflict (id) do update set login = excluded.login, dados = excluded.dados, atualizado_em = now()`,
-      [u.id, u.login, u],
-    );
+    await this.transacao(async (c) => {
+      await c.query(
+        `insert into usuarios (id, login, dados) values ($1, $2, $3)
+         on conflict (id) do update set login = excluded.login, dados = excluded.dados, atualizado_em = now()`,
+        [u.id, u.login, u],
+      );
+      if (auditoria) await this.auditar(c, auditoria);
+    });
     return semSenha(u);
+  }
+
+  async criarPrimeiroUsuario(u: UsuarioComSenha) {
+    await this.iniciar();
+    try {
+      return await this.transacao(async (c) => {
+        await c.query("select pg_advisory_xact_lock(727002)");
+        const r = await c.query("insert into usuarios (id, login, dados) select $1, $2, $3 where not exists (select 1 from usuarios)", [u.id, u.login, u]);
+        if (!r.rowCount) return false;
+        await this.auditar(c, { usuario: null, acao: "ADMIN_INICIAL_CRIADO", entidade: "usuario", entidadeId: u.id, detalhe: { login: u.login, perfil: u.perfil } });
+        return true;
+      });
+    } catch (e) {
+      if (e instanceof ErroConflito) return false;
+      throw e;
+    }
   }
 
   async contarUsuarios() {
@@ -369,15 +523,26 @@ export class RepositorioPostgres implements Repositorio {
     return { ...CONFIGURACOES_PADRAO, ...(rows[0]?.dados ?? {}) } as Configuracoes;
   }
 
-  async salvarConfiguracoes(cfg: Configuracoes) {
+  async salvarConfiguracoes(cfg: Configuracoes, auditoria: RegistroAuditoria) {
     await this.iniciar();
     const dados = { ...CONFIGURACOES_PADRAO, ...cfg };
-    await this.pool.query(
-      "insert into configuracoes (id, dados) values (1, $1) on conflict (id) do update set dados = excluded.dados",
-      [dados],
-    );
+    await this.transacao(async (c) => {
+      await c.query("insert into configuracoes (id, dados) values (1, $1) on conflict (id) do update set dados = excluded.dados", [dados]);
+      await this.auditar(c, auditoria);
+    });
     return dados;
   }
+}
+
+/** Converte violações de unicidade em ErroConflito com mensagem compreensível. */
+function traduzirErro(e: unknown): unknown {
+  const err = e as { code?: string; constraint?: string };
+  if (err?.code === "23505") {
+    if (err.constraint === INDICE_PROTOCOLO_UNICO) return new ErroConflito("Já existe uma ocorrência com este protocolo.");
+    if (err.constraint === "usuarios_login_idx") return new ErroConflito("Este login já está em uso.");
+    return new ErroConflito("Registro duplicado.");
+  }
+  return e;
 }
 
 /** Perfis gravados por versões anteriores (ADMIN/PRESENCA) são convertidos. */

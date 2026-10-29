@@ -1,6 +1,9 @@
 import type { ResultadoAnalise } from "./analysis/engine";
 import type { AnexoInfo, Configuracoes, Norma, Ocorrencia, Perfil, Usuario } from "./types";
 
+/** O registro mudou desde que foi carregado (HTTP 409): recarregar antes de salvar de novo. */
+export class ErroConflito extends Error {}
+
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, {
     ...init,
@@ -12,6 +15,12 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
   if (r.status === 401 && typeof window !== "undefined") {
     window.location.href = `/login?voltar=${encodeURIComponent(window.location.pathname)}`;
   }
+  // Senha provisória: a troca é obrigatória antes de qualquer outra ação.
+  if (r.status === 403 && (dados as { codigo?: string }).codigo === "TROCAR_SENHA" && typeof window !== "undefined") {
+    window.location.href = "/minha-senha?obrigatoria=1";
+  }
+  // Registro alterado por outra pessoa desde que foi aberto.
+  if (r.status === 409) throw new ErroConflito((dados as { erro?: string }).erro ?? "Registro alterado por outra pessoa.");
   if (!r.ok) throw new Error((dados as { erro?: string }).erro ?? `Erro ${r.status}`);
   return dados as T;
 }
@@ -31,7 +40,8 @@ export const api = {
   excluirOcorrencia: (id: string) => req(`/api/ocorrencias/${id}`, { method: "DELETE" }),
   registrarProvidencia: (id: string, p: Record<string, unknown>) =>
     req<Ocorrencia>(`/api/ocorrencias/${id}/providencia`, { method: "PUT", body: json(p) }),
-  removerProvidencia: (id: string) => req<Ocorrencia>(`/api/ocorrencias/${id}/providencia`, { method: "DELETE" }),
+  removerProvidencia: (id: string, versao: number) =>
+    req<Ocorrencia>(`/api/ocorrencias/${id}/providencia`, { method: "DELETE", body: json({ versao }) }),
 
   analisar: (dados: { ocorrencia: string; descricao?: string; horario?: string; data?: string; tratamento?: string }) =>
     req<ResultadoAnalise>("/api/analisar", { method: "POST", body: json(dados) }),
@@ -50,6 +60,6 @@ export const api = {
   trocarMinhaSenha: (senhaAtual: string, novaSenha: string) =>
     req("/api/auth/senha", { method: "POST", body: json({ senhaAtual, novaSenha }) }),
 
-  infoDemonstracao: () => req<{ armazenamento: string; permiteRestaurar: boolean }>("/api/demonstracao"),
-  restaurarDemonstracao: () => req("/api/demonstracao", { method: "POST" }),
+  infoDemonstracao: () => req<{ armazenamento: string; permiteRestaurar: boolean; fraseConfirmacao: string }>("/api/demonstracao"),
+  restaurarDemonstracao: (confirmacao: string) => req("/api/demonstracao", { method: "POST", body: json({ confirmacao }) }),
 };

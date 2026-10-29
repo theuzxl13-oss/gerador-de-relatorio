@@ -1,6 +1,6 @@
 import { repositorio } from "@/server/db";
-import { exigirUsuario } from "@/server/auth";
-import { responder } from "@/server/api";
+import { exigirUsuario, referencia } from "@/server/auth";
+import { lerCorpo, responder } from "@/server/api";
 import { validarConfiguracoes } from "@/server/validacao";
 
 export const dynamic = "force-dynamic";
@@ -13,9 +13,17 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const body = await req.json().catch(() => null);
   return responder(async () => {
-    await exigirUsuario("configuracoes");
-    return repositorio().salvarConfiguracoes(validarConfiguracoes(body));
+    const u = await exigirUsuario("configuracoes");
+    const nova = validarConfiguracoes(await lerCorpo(req));
+    const repo = repositorio();
+    const atual = await repo.obterConfiguracoes();
+    const alterados = (Object.keys(nova) as (keyof typeof nova)[]).filter((k) => JSON.stringify(nova[k]) !== JSON.stringify(atual[k]));
+    return repo.salvarConfiguracoes(nova, {
+      usuario: referencia(u),
+      acao: "CONFIGURACOES_ALTERADAS",
+      entidade: "configuracoes",
+      detalhe: Object.fromEntries(alterados.map((k) => [k, { antes: atual[k], depois: nova[k] }])),
+    });
   });
 }

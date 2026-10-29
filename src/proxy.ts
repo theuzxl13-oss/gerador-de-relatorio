@@ -35,7 +35,16 @@ export async function proxy(req: NextRequest) {
   if (pathname === "/login" || pathname === "/api/auth/login" || pathname === "/api/saude") return NextResponse.next();
 
   const sessao = await lerToken(req.cookies.get(COOKIE_SESSAO)?.value);
-  if (sessao) return NextResponse.next();
+  if (sessao) {
+    // Senha provisória: qualquer página leva à troca de senha (a API também recusa no servidor).
+    if (sessao.t === 1 && !pathname.startsWith("/api/") && pathname !== "/minha-senha") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/minha-senha";
+      url.search = "?obrigatoria=1";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ erro: "Sessão expirada. Entre novamente." }, { status: 401 });

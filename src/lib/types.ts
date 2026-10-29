@@ -87,9 +87,20 @@ export interface FundamentacaoSnapshot {
   citacao: string;
   /** Forma curta para tabelas. Ex.: "RI II, item 8" */
   citacaoCurta: string;
+  /**
+   * AUTOMATICA: a norma estava entre as sugestões do motor de análise (calculado no servidor).
+   * MANUAL: escolhida pelo usuário fora das sugestões. Em ambos os casos é uma confirmação
+   * humana de quem registrou; a decisão administrativa é a providência.
+   */
   origem: "AUTOMATICA" | "MANUAL";
   confianca?: Confianca;
   confirmadoEm: string;
+  /** Versão da norma usada (data da última edição na Base Normativa, ou "original"). */
+  normaVersao?: string;
+  /** A norma estava marcada como "revisão manual" (trecho com leitura incerta) no momento do vínculo. */
+  revisaoPendente?: boolean;
+  /** Quem confirmou a fundamentação. */
+  confirmadoPor?: RegistradoPor;
 }
 
 export type Tratamento =
@@ -194,6 +205,8 @@ export interface Ocorrencia {
   status: StatusOcorrencia;
   criadoEm: string;
   atualizadoEm: string;
+  /** Versão do registro (controle de concorrência otimista): aumenta a cada alteração. */
+  versao?: number;
 }
 
 /** Como as seções do Regulamento são chamadas no texto do relatório. */
@@ -264,6 +277,8 @@ export interface Usuario {
   login: string;
   perfil: Perfil;
   ativo: boolean;
+  /** Senha provisória (definida por outra pessoa ou pela configuração): troca obrigatória no próximo acesso. */
+  trocarSenha?: boolean;
   criadoEm: string;
   atualizadoEm: string;
 }

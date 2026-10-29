@@ -1,7 +1,7 @@
-import { exigirUsuario, gerarHashSenha, validarNovaSenha, ErroAcesso } from "@/server/auth";
-import { responder } from "@/server/api";
+import { exigirUsuario, gerarHashSenha, referencia, validarNovaSenha, ErroAcesso } from "@/server/auth";
+import { lerCorpo, responder } from "@/server/api";
 import { repositorio } from "@/server/db";
-import { ErroValidacao } from "@/server/validacao";
+import { ErroConflito, ErroNaoEncontrado, ErroValidacao } from "@/server/validacao";
 import { validarDadosUsuario } from "@/server/usuarios";
 import { perfisGerenciaveis } from "@/lib/permissoes";
 
@@ -10,23 +10,24 @@ export const dynamic = "force-dynamic";
 /**
  * Atualiza nome, login, perfil, situação (ativo) e, opcionalmente, redefine a senha.
  * Usuários não são excluídos: são desativados, preservando o histórico.
+ * Desativação e mudança de perfil valem na próxima requisição (o perfil é lido do banco);
+ * redefinir a senha encerra as sessões abertas e torna a senha provisória.
  */
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   return responder(async () => {
     const eu = await exigirUsuario("usuarios");
+    const b = await lerCorpo(req);
     const repo = repositorio();
     const atual = await repo.obterUsuario(id);
-    if (!atual) throw new ErroValidacao("Usuário não encontrado.");
-    const dados = validarDadosUsuario(b);
     const permitidos = perfisGerenciaveis(eu.perfil);
-    if (!permitidos.includes(atual.perfil) || !permitidos.includes(dados.perfil)) {
-      throw new ErroAcesso("Você não pode alterar logins com este perfil.", 403);
-    }
+    // Usuário de perfil não gerenciável é tratado como inexistente para quem não pode administrá-lo.
+    if (!atual || !permitidos.includes(atual.perfil)) throw new ErroNaoEncontrado("Usuário não encontrado.");
+    const dados = validarDadosUsuario(b);
+    if (!permitidos.includes(dados.perfil)) throw new ErroAcesso("Você não pode atribuir este perfil.", 403);
 
     const outro = await repo.obterUsuarioPorLogin(dados.login);
-    if (outro && outro.id !== id) throw new ErroValidacao(`O login "${dados.login}" já está em uso.`);
+    if (outro && outro.id !== id) throw new ErroConflito(`O login "${dados.login}" já está em uso.`);
 
     // Garante que sempre exista ao menos um Admin Geral ativo.
     const deixaDeSerAdminAtivo = atual.perfil === "ADMIN_GERAL" && atual.ativo && (dados.perfil !== "ADMIN_GERAL" || !dados.ativo);
@@ -37,13 +38,30 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     if (id === eu.id && !dados.ativo) throw new ErroValidacao("Você não pode desativar o seu próprio usuário.");
 
     let senhaHash = atual.senhaHash;
-    if (typeof b?.senha === "string" && b.senha) {
+    let trocarSenha = atual.trocarSenha;
+    const redefiniu = typeof b?.senha === "string" && b.senha.length > 0;
+    if (redefiniu) {
       try {
-        senhaHash = await gerarHashSenha(validarNovaSenha(b.senha));
+        senhaHash = await gerarHashSenha(validarNovaSenha(b!.senha, dados.login));
       } catch (e) {
         throw new ErroValidacao((e as ErroAcesso).message);
       }
+      // Senha escolhida por outra pessoa é provisória.
+      trocarSenha = id !== eu.id;
     }
-    return repo.salvarUsuario({ ...atual, ...dados, senhaHash, atualizadoEm: new Date().toISOString() });
+    const mudancas = (["nome", "login", "perfil", "ativo"] as const).filter((k) => dados[k] !== atual[k]);
+    return repo.salvarUsuario(
+      { ...atual, ...dados, senhaHash, trocarSenha, atualizadoEm: new Date().toISOString() },
+      {
+        usuario: referencia(eu),
+        acao: "USUARIO_ALTERADO",
+        entidade: "usuario",
+        entidadeId: id,
+        detalhe: {
+          ...Object.fromEntries(mudancas.map((k) => [k, { antes: atual[k], depois: dados[k] }])),
+          senhaRedefinida: redefiniu,
+        },
+      },
+    );
   });
 }

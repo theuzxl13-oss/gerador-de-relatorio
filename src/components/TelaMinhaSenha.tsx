@@ -5,7 +5,7 @@ import { api } from "@/lib/api-cliente";
 import { useUsuario } from "./UsuarioContexto";
 import { Aviso, Botao, Campo, Cartao, Entrada } from "./ui";
 
-export function TelaMinhaSenha() {
+export function TelaMinhaSenha({ obrigatoria = false }: { obrigatoria?: boolean }) {
   const usuario = useUsuario();
   const [atual, setAtual] = useState("");
   const [nova, setNova] = useState("");
@@ -25,6 +25,7 @@ export function TelaMinhaSenha() {
       setNova("");
       setConfirma("");
       setMsg({ tipo: "sucesso", texto: "Senha alterada com sucesso." });
+      if (obrigatoria) window.location.href = "/";
     } catch (e) {
       setMsg({ tipo: "erro", texto: (e as Error).message });
     } finally {
@@ -35,6 +36,11 @@ export function TelaMinhaSenha() {
   return (
     <div className="mx-auto max-w-md space-y-4">
       <h1 className="text-2xl font-bold text-gray-900">Trocar minha senha</h1>
+      {obrigatoria && (
+        <Aviso tipo="alerta" titulo="Defina a sua senha pessoal">
+          A senha atual é provisória (foi definida por outra pessoa ou pela configuração do sistema). Crie uma senha que só você conheça para continuar.
+        </Aviso>
+      )}
       {usuario && (
         <p className="text-sm text-gray-600">
           Usuário: <strong>{usuario.login}</strong> ({usuario.nome})

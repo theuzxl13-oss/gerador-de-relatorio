@@ -51,3 +51,22 @@ export function registrarFalha(ip: string, login: string) {
 export function limparFalhas(ip: string, login: string) {
   for (const k of chaves(ip, login)) falhas.delete(k);
 }
+
+const contadores = new Map<string, { n: number; desde: number }>();
+
+/**
+ * Limite genérico de frequência (em memória, por instância): retorna false quando
+ * `chave` já fez `maximo` operações dentro da janela.
+ */
+export function dentroDoLimite(chave: string, maximo: number, janelaMs: number): boolean {
+  const agora = Date.now();
+  if (contadores.size > 5000) for (const [k, v] of contadores) if (agora - v.desde > janelaMs) contadores.delete(k);
+  const c = contadores.get(chave);
+  if (!c || agora - c.desde > janelaMs) {
+    contadores.set(chave, { n: 1, desde: agora });
+    return true;
+  }
+  if (c.n >= maximo) return false;
+  c.n++;
+  return true;
+}

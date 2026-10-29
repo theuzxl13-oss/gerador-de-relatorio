@@ -18,11 +18,13 @@ services:
         value: America/Sao_Paulo
       - key: DATABASE_URL
         sync: false
-      # Login e senha do administrador inicial (os demais usuários são criados na tela Usuários)
+      # Admin Geral inicial: usado só enquanto não existe usuário; senha forte (12+) e provisória
       - key: APP_USUARIO
         sync: false
       - key: APP_SENHA
         sync: false
+      # TLS do banco: padrão "verificar" (Neon usa certificado público). Para Supabase,
+      # adicione manualmente DATABASE_CA_CERT com o certificado do painel do Supabase.
       # Chave que assina os logins (sessões). Gerada automaticamente pelo Render.
       - key: SESSAO_SEGREDO
         generateValue: true

@@ -7,8 +7,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:integracao": "tsx --test tests/integracao-postgres.test.ts",
+    "test:e2e": "tsx --test --test-concurrency=1 tests/e2e/*.test.ts"
   },
   "dependencies": {
     "jspdf": "^4.2.1",

@@ -21,6 +21,28 @@ export function diagnosticarErroBanco(e: unknown): string {
       ? "O banco não respondeu. O Supabase gratuito pausa o projeto após 7 dias sem uso: reative-o no painel do Supabase (Restore project)."
       : "O banco não respondeu (tempo esgotado). Tente novamente em alguns segundos.";
   }
-  if (/certificate|SSL|TLS/i.test(msg)) return `Falha na conexão segura (SSL) com o banco: ${msg}`;
-  return msg ? `Erro do banco: ${msg}${code ? ` [${code}]` : ""}` : "Erro desconhecido no banco de dados.";
+  if (CODIGOS_CERTIFICADO.has(code) || /certificate|self.signed|altnames/i.test(msg)) {
+    return supabase
+      ? "O certificado do banco não pôde ser verificado. No Supabase, baixe o certificado (Database → SSL Configuration) e informe-o em DATABASE_CA_CERT."
+      : "O certificado do banco não pôde ser verificado. Informe a cadeia do provedor em DATABASE_CA_CERT (ou, temporariamente e por decisão explícita, DATABASE_SSL=sem-verificacao).";
+  }
+  if (/SSL|TLS/i.test(msg)) return "Falha na conexão segura (TLS) com o banco. Confira DATABASE_SSL e DATABASE_CA_CERT.";
+  // Demais erros: sem repassar a mensagem interna ao navegador (fica apenas no log do servidor).
+  return code ? `Erro do banco [${code}].` : "Erro desconhecido no banco de dados.";
+}
+
+const CODIGOS_CERTIFICADO = new Set([
+  "SELF_SIGNED_CERT_IN_CHAIN", "DEPTH_ZERO_SELF_SIGNED_CERT", "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED",
+]);
+
+const CODIGOS_REDE = new Set(["ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "ETIMEDOUT", "ECONNRESET"]);
+
+/** Indica se o erro veio do banco/conexão (SQLSTATE do PostgreSQL, rede ou TLS). */
+export function ehErroDeBanco(e: unknown): boolean {
+  const err = e as { code?: unknown; message?: unknown } | null;
+  const code = typeof err?.code === "string" ? err.code : "";
+  if (/^[0-9A-Z]{5}$/.test(code) && /\d/.test(code)) return true;
+  if (CODIGOS_REDE.has(code) || CODIGOS_CERTIFICADO.has(code)) return true;
+  return /connection terminated|timeout exceeded when trying to connect|Connection terminated/i.test(String(err?.message ?? ""));
 }

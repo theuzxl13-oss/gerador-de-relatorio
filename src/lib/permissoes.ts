@@ -22,11 +22,13 @@ export type Acao =
   /** Editar a Base Normativa. */
   | "baseNormativa"
   /** Alterar as configurações do relatório. */
-  | "configuracoes";
+  | "configuracoes"
+  /** Consultar a trilha de auditoria. */
+  | "auditoria";
 
 const MATRIZ: Record<Perfil, Acao[]> = {
-  ADMIN_GERAL: ["registrar", "verTodas", "decidir", "editarOcorrencia", "excluir", "painel", "usuarios", "baseNormativa", "configuracoes"],
-  GERENTE: ["verTodas", "painel"],
+  ADMIN_GERAL: ["registrar", "verTodas", "decidir", "editarOcorrencia", "excluir", "painel", "usuarios", "baseNormativa", "configuracoes", "auditoria"],
+  GERENTE: ["verTodas", "painel", "auditoria"],
   ADMINISTRACAO: ["registrar", "verTodas", "decidir", "editarOcorrencia", "painel", "usuarios"],
   LIDER: ["registrar"],
   PORTEIRO: ["registrar"],

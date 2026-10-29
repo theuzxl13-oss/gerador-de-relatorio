@@ -9,7 +9,7 @@ import type { TermoSecao } from "@/lib/types";
 
 export function TelaConfiguracoes() {
   const [cfg, setCfg] = useState<Configuracoes | null>(null);
-  const [info, setInfo] = useState<{ armazenamento: string; permiteRestaurar: boolean } | null>(null);
+  const [info, setInfo] = useState<{ armazenamento: string; permiteRestaurar: boolean; fraseConfirmacao: string } | null>(null);
   const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -37,9 +37,10 @@ export function TelaConfiguracoes() {
 
   async function restaurarDemo() {
     if (!confirm("ATENÇÃO: todas as ocorrências serão APAGADAS e a numeração automática de protocolos será reiniciada, recriando apenas os dados demonstrativos. Continuar?")) return;
-    if (!confirm("Confirma a exclusão de TODAS as ocorrências registradas?")) return;
+    const frase = info?.fraseConfirmacao ?? "";
+    if (prompt(`Para confirmar, digite exatamente: ${frase}`)?.trim() !== frase) return;
     try {
-      await api.restaurarDemonstracao();
+      await api.restaurarDemonstracao(frase);
       setMensagem({ tipo: "sucesso", texto: "Dados demonstrativos restaurados." });
     } catch (e) {
       setMensagem({ tipo: "erro", texto: (e as Error).message });

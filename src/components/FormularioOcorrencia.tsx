@@ -169,6 +169,7 @@ export function FormularioOcorrencia({ existente, modelo, incluirTextoPadrao, te
     const dados: Partial<Ocorrencia> & { gerarProtocolo?: boolean } = {
       protocolo: gerarProtocolo ? "" : protocolo.trim(),
       gerarProtocolo,
+      versao: existente?.versao ?? 1,
       data,
       horario,
       ocorrencia: ocorrencia.trim(),

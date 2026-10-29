@@ -1,4 +1,5 @@
 import { criarSnapshot } from "@/lib/citacao";
+import { analisarOcorrencia } from "@/lib/analysis/engine";
 import { multaMaxima, formatarReais, statusDaOcorrencia } from "@/lib/providencia";
 import {
   TRATAMENTOS,
@@ -17,11 +18,25 @@ import {
   type Tratamento,
   type Genero,
   type Configuracoes,
+  type Confianca,
   type DocumentoTipo,
 } from "@/lib/types";
 import type { NovaOcorrencia } from "./repositorio";
 
 export class ErroValidacao extends Error {}
+/** Registro inexistente ou fora do alcance do usuário (responde 404 sem revelar qual dos dois). */
+export class ErroNaoEncontrado extends Error {}
+/** Corpo da requisição acima do limite (413). */
+export class ErroTamanho extends Error {}
+/** O registro mudou desde que foi lido, ou viola uma regra de unicidade (409). */
+export class ErroConflito extends Error {}
+
+/** Versão do registro enviada pela tela (controle de concorrência). */
+export function versaoInformada(body: Record<string, unknown> | null): number {
+  const v = Number(body?.versao);
+  if (!Number.isInteger(v) || v < 1) throw new ErroValidacao("Versão do registro ausente. Recarregue a página e tente novamente.");
+  return v;
+}
 
 const texto = (v: unknown, campo: string, obrigatorio = true, max = 2000): string | undefined => {
   if (v === undefined || v === null || v === "") {
@@ -35,16 +50,41 @@ const texto = (v: unknown, campo: string, obrigatorio = true, max = 2000): strin
   return t || undefined;
 };
 
+/** Normas sugeridas pelo motor de análise (calculado no servidor) → confiança. */
+export type SugestoesServidor = Map<string, Confianca>;
+
+/**
+ * Recalcula no servidor as sugestões automáticas para o texto da ocorrência.
+ * Assim "origem" e "confiança" refletem o motor de análise, não o que o navegador declarou.
+ */
+export async function sugestoesDoServidor(body: Record<string, unknown> | null, normas: Norma[]): Promise<SugestoesServidor> {
+  const texto = typeof body?.ocorrencia === "string" ? body.ocorrencia.trim() : "";
+  const mapa: SugestoesServidor = new Map();
+  if (!texto) return mapa;
+  const r = await analisarOcorrencia(texto, normas, {
+    descricao: typeof body?.descricao === "string" ? body.descricao : undefined,
+    horario: typeof body?.horario === "string" ? body.horario : undefined,
+    tratamento: typeof body?.tratamento === "string" ? (body.tratamento as Tratamento) : undefined,
+  });
+  for (const c of [...r.candidatos, r.complementar, r.complementarSugerida]) {
+    if (c && !mapa.has(c.norma.id)) mapa.set(c.norma.id, c.confianca);
+  }
+  return mapa;
+}
+
 /**
  * Reconstrói a fundamentação a partir da norma cadastrada no banco.
  * O texto e a citação NUNCA são aceitos do navegador: vêm sempre da Base
  * Normativa. Se a norma já estava vinculada à ocorrência, o registro original
  * é preservado (auditoria), mesmo que a norma tenha sido editada depois.
+ * Novos vínculos exigem norma ativa; origem e confiança são calculadas no servidor.
  */
 function fundamentacao(
   v: unknown,
   normas: Map<string, Norma>,
-  anterior?: FundamentacaoSnapshot,
+  anterior: FundamentacaoSnapshot | undefined,
+  sugestoes: SugestoesServidor,
+  por?: RegistradoPor,
 ): FundamentacaoSnapshot | undefined {
   if (!v) return undefined;
   const f = v as Partial<FundamentacaoSnapshot>;
@@ -52,9 +92,10 @@ function fundamentacao(
   if (anterior && anterior.normaId === f.normaId) return anterior;
   const norma = normas.get(f.normaId);
   if (!norma) throw new ErroValidacao("A norma selecionada não existe na Base Normativa.");
-  const origem = f.origem === "AUTOMATICA" ? "AUTOMATICA" : "MANUAL";
-  const confianca = f.confianca === "ALTA" || f.confianca === "MEDIA" || f.confianca === "BAIXA" ? f.confianca : undefined;
-  return criarSnapshot(norma, origem, confianca);
+  if (!norma.ativo) throw new ErroValidacao("A norma selecionada está desativada na Base Normativa e não pode fundamentar novos relatórios.");
+  const confianca = sugestoes.get(norma.id);
+  const snap = criarSnapshot(norma, confianca ? "AUTOMATICA" : "MANUAL", confianca);
+  return por ? { ...snap, confirmadoPor: por } : snap;
 }
 
 const MAX_ANEXOS = 6;
@@ -74,7 +115,13 @@ function anexos(v: unknown): AnexoInfo[] | undefined {
   });
 }
 
-export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: Ocorrencia): NovaOcorrencia {
+export function validarOcorrencia(
+  body: unknown,
+  normasLista: Norma[],
+  atual?: Ocorrencia,
+  por?: RegistradoPor,
+  sugestoes: SugestoesServidor = new Map(),
+): NovaOcorrencia {
   if (!body || typeof body !== "object") throw new ErroValidacao("Dados inválidos.");
   const b = body as Record<string, unknown>;
   const normas = new Map(normasLista.map((n) => [n.id, n]));
@@ -90,8 +137,8 @@ export function validarOcorrencia(body: unknown, normasLista: Norma[], atual?: O
 
   const genero = (["M", "F", "N"] as Genero[]).includes(b.genero as Genero) ? (b.genero as Genero) : undefined;
 
-  const principal = fundamentacao(b.fundamentacaoPrincipal, normas, atual?.fundamentacaoPrincipal);
-  const complementar = principal ? fundamentacao(b.fundamentacaoComplementar, normas, atual?.fundamentacaoComplementar) : undefined;
+  const principal = fundamentacao(b.fundamentacaoPrincipal, normas, atual?.fundamentacaoPrincipal, sugestoes, por);
+  const complementar = principal ? fundamentacao(b.fundamentacaoComplementar, normas, atual?.fundamentacaoComplementar, sugestoes, por) : undefined;
   if (principal && complementar && principal.normaId === complementar.normaId) {
     throw new ErroValidacao("A fundamentação complementar deve ser diferente da principal.");
   }

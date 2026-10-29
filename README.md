@@ -50,21 +50,26 @@ Pré-requisito: **Node.js 20.9 ou superior** (recomendado 22).
 
 ```bash
 npm install
+cp .env.example .env.local   # defina APP_USUARIO e APP_SENHA (não existe login padrão)
 npm run dev
 ```
 
-Acesse **http://localhost:3000**.
+Acesse **http://localhost:3000** e entre com `APP_USUARIO` / `APP_SENHA`; no primeiro acesso o sistema pede uma senha pessoal.
 
-Sem `DATABASE_URL`, os dados ficam em `dados/banco.json`, criado automaticamente com a Base Normativa e algumas ocorrências demonstrativas. Para usar PostgreSQL localmente, copie `.env.example` para `.env.local` e preencha `DATABASE_URL`.
+Sem `DATABASE_URL`, os dados ficam em `dados/banco.json` (somente fora de produção), criado automaticamente com a Base Normativa e algumas ocorrências demonstrativas.
 
 Outros comandos:
 
 ```bash
-npm run build   # build de produção
-npm start       # executa o build de produção
-npm test        # testes do motor de busca e do gerador de texto
-npm run lint    # verificação de tipos (TypeScript)
+npm run build          # build de produção
+npm start              # executa o build de produção
+npm run typecheck      # verificação de tipos (também em npm run lint)
+npm test               # testes unitários (segurança, permissões, providências, normas, fotos)
+npm run test:integracao  # PostgreSQL real: TEST_DATABASE_URL=postgresql://postgres@localhost:5432/postgres
+npm run test:e2e         # API ponta a ponta: E2E_BASE_URL=http://localhost:3100 (veja tests/e2e)
 ```
+
+Os testes de integração e ponta a ponta criam e usam **bancos de teste próprios**: nunca aponte essas variáveis para o banco de produção. A CI do GitHub (`.github/workflows/ci.yml`) roda todos eles a cada envio.
 
 ---
 
@@ -102,12 +107,16 @@ As tabelas são criadas **automaticamente** no primeiro acesso ao sistema. Não 
 
 | Variável | Obrigatória | Descrição |
 |---|---|---|
-| `DATABASE_URL` | **Sim, em produção** | String de conexão PostgreSQL (Neon). Sem ela, os dados ficam no disco do Render e são **apagados a cada reinício** |
-| `APP_USUARIO` / `APP_SENHA` | **Sim** | Login e senha do **administrador inicial**, criado automaticamente no primeiro acesso. Os demais usuários são cadastrados pelo administrador na tela **Usuários**. Depois que o administrador existir, alterar essas variáveis não muda a senha dele (use "trocar senha") |
-| `SESSAO_SEGREDO` | Não | Chave das sessões de login. Se omitida, é derivada das outras variáveis. Trocar o valor desconecta todos os usuários |
+| `DATABASE_URL` | **Sim, em produção** | String de conexão PostgreSQL (Neon). Em produção, sem ela o sistema não inicia (health check 503) |
+| `SESSAO_SEGREDO` | **Sim, em produção** | Chave aleatória das sessões (mínimo 32 caracteres; o Blueprint gera). Sem ela ninguém entra e o health check responde 503. Trocar o valor desconecta todos |
+| `SESSAO_SEGREDO_ANTERIOR` | Não | Durante uma troca de chave, mantém válidas as sessões assinadas com a chave anterior. Remova depois |
+| `APP_USUARIO` / `APP_SENHA` | **Sim, no primeiro acesso** | Criam o **Admin Geral inicial** somente enquanto não existe nenhum usuário. Em produção a senha precisa ter 12+ caracteres e não ser óbvia; ela é **provisória** (troca obrigatória no primeiro acesso). Não existe login padrão |
+| `DATABASE_SSL` | Não | `verificar` (padrão: TLS com certificado conferido), `sem-verificacao` (só por decisão explícita) ou `desativado` (apenas banco local) |
+| `DATABASE_CA_CERT` / `DATABASE_CA_CERT_FILE` | Conforme o provedor | Cadeia de certificados do banco (PEM). Neon/Render usam autoridades públicas e não precisam; **Supabase precisa** (Database → SSL Configuration) |
+| `ORIGEM_SEGREDO` | Não | Com Cloudflare: recusa acessos que não passaram por ela (veja Segurança) |
 | `TZ` | Recomendado | `America/Sao_Paulo`, para a data automática do relatório |
 | `SEED_DEMO` | Não | `true` cria ocorrências demonstrativas na primeira execução. Use `false` para começar vazio |
-| `PERMITIR_RESTAURAR_DEMO` | Não | `false` desativa o botão que apaga as ocorrências e recria a demonstração. **Use `false` quando o sistema estiver em uso real** |
+| `PERMITIR_RESTAURAR_DEMO` | Não | Só fora de produção: `true` habilita o botão que apaga as ocorrências e recria a demonstração (com frase de confirmação). Em produção é sempre recusado |
 | `NODE_VERSION` | Não | `22` |
 
 ### Diagnóstico do banco
@@ -155,17 +164,22 @@ A mesma explicação aparece na tela quando uma operação falha por causa do ba
 ### O que o sistema já faz
 | Proteção | Como |
 |---|---|
-| Senhas | Guardadas com hash **scrypt** (nunca em texto). Mínimo de 8 caracteres |
+| Senhas | Hash **scrypt** (nunca em texto). Mínimo de 8 caracteres e recusa de senhas óbvias. Senha definida por outra pessoa (cadastro, redefinição, admin inicial) é **provisória**: troca obrigatória antes de qualquer uso |
+| Primeiro acesso | Sem credencial padrão: exige `APP_USUARIO`/`APP_SENHA` (forte em produção), só funciona com o banco vazio e cria exatamente um Admin Geral |
 | Tentativas de senha | 5 erros em 15 min (por IP ou por login) bloqueiam por 15 min. Mesmo tempo de resposta para login inexistente e senha errada |
-| Sessão | Cookie `HttpOnly` + `SameSite=Lax` + `Secure`, assinado (HMAC). Expira em 7 dias. Trocar ou redefinir a senha **encerra as sessões nos outros aparelhos**; usuário desativado perde o acesso na hora |
+| Sessão | Cookie `HttpOnly` + `SameSite=Lax` + `Secure`, assinado (HMAC-SHA256) com `SESSAO_SEGREDO` obrigatório em produção; token com finalidade, versão, emissão e validade conferidas. Expira em 7 dias. Trocar ou redefinir a senha **encerra as sessões nos outros aparelhos**; desativação e mudança de perfil valem na requisição seguinte |
 | Permissões | Conferidas **no servidor** em todas as rotas (não só escondidas na tela). Líderes/porteiros/rondas não acessam relatórios de outros |
 | CSRF | Alterações (POST/PUT/DELETE) só são aceitas quando vêm do próprio site |
 | Cabeçalhos | CSP restritiva, `X-Frame-Options: DENY` (impede o site dentro de outro), HSTS, `nosniff`, `Referrer-Policy`, sem `X-Powered-By` |
 | Cache | Respostas da API com `Cache-Control: private, no-store` (dados pessoais não ficam em cache de proxy/CDN) |
-| Fotos | Só JPG/PNG/WEBP **verdadeiros** (assinatura do arquivo conferida), até 4 MB; servidas com CSP `sandbox` |
+| Fotos | Só JPEG **verdadeiro** (estrutura conferida), até 4 MB; dimensões lidas do arquivo; **metadados (EXIF/GPS) removidos**; limite de envios por hora e de fotos pendentes; cada foto só é entregue a quem pode ver a ocorrência dela (pendente: só a quem enviou) |
+| Corpo das requisições | Limite de tamanho em todas as rotas (256 KB; fotos 6 MB) → 413 |
+| Concorrência | Cada relatório tem versão: salvar uma versão desatualizada responde **409** e não sobrescreve; alterações rodam em transação com o registro travado |
+| Protocolo | Único (sem diferenciar maiúsculas/espaços) com restrição no banco; em branco é permitido |
+| Auditoria | Tabela própria `auditoria`, gravada na **mesma transação** da operação (se não gravar, a operação é desfeita). O banco recusa UPDATE/DELETE/TRUNCATE nela. Tela **Auditoria** (Admin Geral e Gerente) |
 | Fundamentação | Texto das normas sempre reconstruído no servidor (o navegador não consegue inventar fundamentação) |
 | Dados | Nada é apagado por perfis operacionais; exclusão só pelo Admin Geral; restaurar demonstração só com `PERMITIR_RESTAURAR_DEMO=true` |
-| Banco | Conexão com SSL; a `DATABASE_URL` nunca aparece nas mensagens de erro |
+| Banco | TLS **com verificação do certificado e do nome do servidor** (padrão); a `DATABASE_URL` nunca aparece nas mensagens; erros internos respondem com um código de referência, sem detalhes |
 | Dependências | `npm audit` sem vulnerabilidades conhecidas (Next.js 16.4.3) |
 
 ### Usar com Cloudflare (recomendado)
@@ -188,7 +202,7 @@ O sistema continua **rodando no Render** (ele precisa de um servidor Node.js e d
 ### Cuidados de uso
 - Use senhas fortes para Admin Geral e Administração e **não compartilhe logins**: cada pessoa com o seu (a linha do tempo registra quem fez o quê).
 - Quando alguém sair da empresa, **desative** o login no mesmo dia.
-- Troque a `APP_SENHA` inicial depois do primeiro acesso (pela tela "trocar senha").
+- A senha de `APP_SENHA` é provisória: o sistema exige a troca no primeiro acesso. Depois disso a variável pode ser removida.
 - Faça backup periódico: botão **Exportar planilha** em Providências e, no Neon, *Branches/Backups*.
 - LGPD: o sistema guarda nomes, endereços (quadra/lote) e fotos de pessoas. Restrinja o acesso a quem precisa e defina por quanto tempo os relatórios ficam guardados.
 
@@ -236,7 +250,8 @@ src/
     historico                  Histórico com filtros
     base-normativa             Estatuto e Regulamento
     configuracoes              Configurações
-    api/                       normas, ocorrencias, analisar, configuracoes, demonstracao, saude
+    painel, auditoria          Providências e trilha de auditoria
+    api/                       normas, ocorrencias, providencia, anexos, usuarios, auditoria, analisar, configuracoes, saude
   components/                  Formulário, seletor de normas, folha A4, UI
   data/                        Estatuto, Regulamento e dados demonstrativos
   lib/
@@ -244,9 +259,10 @@ src/
     citacao.ts                 Formatação das citações (Artigo / Item / Subitem)
     relatorio.ts               Texto do relatório, datas por extenso, protocolo
     pdf.ts                     Geração do PDF A4 (jsPDF)
-  server/                      Banco de dados (PostgreSQL ou arquivo JSON) e validação
-  proxy.ts                     Login por usuário/senha (APP_USUARIO / APP_SENHA)
-tests/                         Testes automatizados
+  server/                      Banco (PostgreSQL ou arquivo JSON), migrações, configuração, validação, auditoria
+  proxy.ts                     Exige sessão, CSRF, troca de senha provisória e trava de origem (Cloudflare)
+tests/                         Testes unitários, de integração (PostgreSQL) e ponta a ponta (tests/e2e)
+docs/                          Migrações e relatório de auditoria técnica
 render.yaml                    Blueprint do Render
 ```
 
