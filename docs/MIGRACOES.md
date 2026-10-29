@@ -10,6 +10,7 @@ As migrações ficam em `src/server/repositorio-postgres.ts` (`MIGRACOES`) e rod
 |---|---|---|
 | 1 | Esquema base (`normas`, `ocorrencias`, `protocolo_sequencia`, `anexos`, `usuarios`, `configuracoes`). Usa `if not exists`: em bancos já existentes não muda nada | Sim |
 | 2 | `ocorrencias.versao` (default 1), `anexos.enviado_por` (nulo nas fotos antigas), tabela `auditoria` com gatilhos que recusam UPDATE/DELETE/TRUNCATE | Sim: o código anterior ignora as colunas novas |
+| 3 | Índices para as listas paginadas (autor, situação, ordem) e índice único (autor + `idCliente`) que impede duplicar relatórios enviados pela fila offline | Sim |
 | (condicional) | Índice único `ocorrencias_protocolo_unico` em `lower(btrim(protocolo))` onde o protocolo não está em branco. **Só é criado se não houver protocolos repetidos**; havendo, o sistema registra um aviso em `/api/saude`, continua funcionando e não altera nenhum dado | Sim |
 
 ## Antes de implantar: verificar protocolos repetidos (somente leitura)
@@ -30,6 +31,12 @@ O código anterior funciona com o esquema novo, então **voltar a versão do sis
 ```sql
 -- condicional
 drop index if exists ocorrencias_protocolo_unico;
+-- versão 3
+drop index if exists ocorrencias_autor_idx;
+drop index if exists ocorrencias_status_idx;
+drop index if exists ocorrencias_ordem_idx;
+drop index if exists ocorrencias_id_cliente_unico;
+delete from schema_migracoes where versao = 3;
 -- versão 2 (atenção: apagar a tabela auditoria descarta a trilha de auditoria)
 drop trigger if exists auditoria_imutavel on auditoria;
 drop trigger if exists auditoria_sem_truncate on auditoria;

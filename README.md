@@ -25,6 +25,10 @@ Sistema web para a Administração da **Associação dos Adquirentes de Unidades
 | **Providências** | A Administração registra o que foi feito com cada relatório: **arquivado**, **notificado** (com período de esclarecimento e se a pessoa esclareceu ou não) ou **multado** (até uma taxa, dobrada na reincidência; prazo de recurso de 30 dias – RI tópico XV) |
 | **Reincidência e prazos** | Aviso de reincidência (mesma quadra/lote e mesma regra em 12 meses), alertas de prazo vencido e painel **Providências** com exportação em planilha (CSV) |
 | **Linha do tempo** | Cada relatório guarda quem o gerou, quem editou e quem decidiu, com data e hora |
+| **Carta ao morador** | Na providência, **Carta de notificação** ou **Carta de multa** em PDF: período de esclarecimento, valor, reincidência e prazo de recurso, citando as regras (tópico XV do Regulamento e Art. 58 do Estatuto) a partir da Base Normativa, com linha de recibo. Se uma regra não estiver cadastrada, a frase é omitida e a tela avisa (nada é inventado). A emissão fica na Auditoria |
+| **Sem sinal (rondas)** | Rascunho automático no aparelho; sem conexão o relatório (com fotos) fica guardado e é **enviado sozinho** quando o sinal volta, sem duplicar, com a data e hora do preenchimento (até 7 dias). Pode ser instalado na tela inicial do celular e abre "Nova ocorrência" mesmo sem internet |
+| **Listas paginadas** | Histórico com filtros aplicados no banco (25 por página); início e painel calculados no banco, sem carregar todos os registros |
+| **Ajuda** | Manual dentro do sistema (ícone "?"), com o conteúdo do perfil de quem está logado primeiro e versão para imprimir |
 | **Auditoria** | O texto oficial da regra fica **gravado no relatório** no momento da confirmação. Edições posteriores na Base Normativa não alteram relatórios já emitidos |
 
 ---

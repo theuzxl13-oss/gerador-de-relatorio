@@ -7,7 +7,7 @@ import { pode, type Acao } from "@/lib/permissoes";
 import { PERFIL_LABEL, type Usuario } from "@/lib/types";
 import { Logo } from "./Logo";
 
-const LINKS: { href: string; rotulo: string; acao?: Acao }[] = [
+const LINKS: { href: string; rotulo: string; acao?: Acao; soCelular?: boolean }[] = [
   { href: "/", rotulo: "Início" },
   { href: "/ocorrencias/nova", rotulo: "Nova ocorrência", acao: "registrar" },
   { href: "/historico", rotulo: "Histórico" },
@@ -16,6 +16,8 @@ const LINKS: { href: string; rotulo: string; acao?: Acao }[] = [
   { href: "/usuarios", rotulo: "Usuários", acao: "usuarios" },
   { href: "/auditoria", rotulo: "Auditoria", acao: "auditoria" },
   { href: "/configuracoes", rotulo: "Configurações", acao: "configuracoes" },
+  // No computador a Ajuda fica no ícone "?" ao lado do nome.
+  { href: "/ajuda", rotulo: "Ajuda", soCelular: true },
 ];
 
 async function sair() {
@@ -34,7 +36,7 @@ export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
   return (
     <header className="nao-imprimir sticky top-0 z-30 bg-marca-800 text-white shadow-md">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5">
-        <Link href="/" className="flex min-w-0 items-center gap-3" onClick={() => setAberto(false)}>
+        <Link href="/" className="flex min-w-0 shrink-0 items-center gap-3" onClick={() => setAberto(false)}>
           <Logo className="h-11 w-auto shrink-0 sm:h-12" />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-base font-semibold sm:text-lg">Fazenda da Ilha</div>
@@ -43,11 +45,11 @@ export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
         </Link>
 
         <nav className="ml-auto hidden items-center gap-0.5 xl:flex">
-          {links.map((l) => (
+          {links.filter((l) => !l.soCelular).map((l) => (
             <Link
               key={l.href}
               href={l.href}
-              className={`rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
+              className={`whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
                 ativo(l.href) ? "bg-white/15 text-white" : "text-marca-100 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -58,6 +60,16 @@ export function Cabecalho({ usuario }: { usuario: Usuario | null }) {
 
         {usuario && (
           <div className="hidden items-center gap-2 border-l border-white/15 pl-3 xl:flex">
+            <Link
+              href="/ajuda"
+              title="Ajuda (manual do sistema)"
+              aria-label="Ajuda"
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ring-1 ring-white/30 ${
+                ativo("/ajuda") ? "bg-white/20" : "hover:bg-white/10"
+              }`}
+            >
+              ?
+            </Link>
             <Link href="/minha-senha" className="max-w-[9rem] text-right leading-tight hover:underline" title="Trocar minha senha">
               <span className="block truncate text-sm font-semibold">{usuario.nome}</span>
               <span className="block text-xs text-marca-100">{PERFIL_LABEL[usuario.perfil]}</span>
