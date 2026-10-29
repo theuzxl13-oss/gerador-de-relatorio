@@ -6,12 +6,19 @@ export const MESES = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-/** Data local de hoje em AAAA-MM-DD (do dispositivo/servidor). */
+export const FUSO_HORARIO = "America/Sao_Paulo";
+
+/**
+ * Data de hoje em AAAA-MM-DD no fuso de São Paulo, independentemente do fuso do
+ * servidor ou do aparelho (plataformas como Cloudflare Workers rodam sempre em UTC).
+ */
 export function hojeISO(agora: Date = new Date()): string {
-  const y = agora.getFullYear();
-  const m = String(agora.getMonth() + 1).padStart(2, "0");
-  const d = String(agora.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: FUSO_HORARIO, year: "numeric", month: "2-digit", day: "2-digit" }).format(agora);
+}
+
+/** Hora atual HH:MM no fuso de São Paulo. */
+export function agoraHHMM(agora: Date = new Date()): string {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO_HORARIO, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(agora);
 }
 
 /** "2026-10-05" → "05 de Outubro de 2026" */

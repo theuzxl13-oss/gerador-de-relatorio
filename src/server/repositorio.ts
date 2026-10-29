@@ -1,3 +1,4 @@
+import type { Estatisticas, FiltroOcorrencias, Pagina, ResumoProvidencias } from "@/lib/consulta";
 import type { AnexoInfo, Configuracoes, Norma, Ocorrencia, RegistradoPor, Usuario, UsuarioComSenha } from "@/lib/types";
 
 export interface NovoAnexo {
@@ -66,8 +67,19 @@ export interface Repositorio {
   /** Restaura a Base Normativa original extraída dos PDFs (descarta edições). */
   restaurarNormas(auditoria: RegistroAuditoria): Promise<void>;
 
+  /** Todas as ocorrências (exportação). Para telas, use as consultas paginadas abaixo. */
   listarOcorrencias(): Promise<Ocorrencia[]>;
+  /** Consulta filtrada e paginada (sem a linha do tempo), em ordem de data decrescente. */
+  buscarOcorrencias(filtro: FiltroOcorrencias, pagina: number, porPagina: number, opcoes?: { crescente?: boolean }): Promise<Pagina<Ocorrencia>>;
+  /** Contagens do painel inicial (opcionalmente só de quem registrou). */
+  estatisticas(filtro: Pick<FiltroOcorrencias, "registradoPor">, hoje: string): Promise<Estatisticas>;
+  /** Contagens do painel de providências. */
+  resumoProvidencias(hoje: string): Promise<ResumoProvidencias>;
+  /** Ocorrências com prazo possivelmente em aberto (notificação pendente, recurso, recebimento recente). */
+  listarEmAcompanhamento(hoje: string): Promise<Ocorrencia[]>;
   obterOcorrencia(id: string): Promise<Ocorrencia | null>;
+  /** Ocorrência criada por este usuário a partir de um envio da fila offline (idempotência). */
+  obterPorIdCliente(usuarioId: string, idCliente: string): Promise<Ocorrencia | null>;
   /**
    * Cria a ocorrência. O protocolo é o informado (pode ficar em branco) ou, com
    * `gerarProtocolo`, o próximo da sequência do ano (AAAA-NNNN), gerado de forma atômica.

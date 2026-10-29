@@ -205,6 +205,10 @@ export interface Ocorrencia {
   status: StatusOcorrencia;
   criadoEm: string;
   atualizadoEm: string;
+  /** Identificador gerado no aparelho para envios da fila offline (evita duplicar em reenvios). */
+  idCliente?: string;
+  /** Instante (ISO) em que o relatório foi preenchido sem conexão, quando enviado depois pela fila offline. */
+  registradoOfflineEm?: string;
   /** Versão do registro (controle de concorrência otimista): aumenta a cada alteração. */
   versao?: number;
 }

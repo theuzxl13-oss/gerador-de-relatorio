@@ -13,6 +13,7 @@ import { RepositorioPostgres } from "../src/server/repositorio-postgres";
 import { ErroConflito, ErroValidacao } from "../src/server/validacao";
 import type { NovaOcorrencia, RegistroAuditoria } from "../src/server/repositorio";
 import type { UsuarioComSenha } from "../src/lib/types";
+import { emAcompanhamento, estatisticas, paginar, resumoProvidencias, type FiltroOcorrencias } from "../src/lib/consulta";
 
 const URL_ADMIN = process.env.TEST_DATABASE_URL;
 const pular = !URL_ADMIN && "defina TEST_DATABASE_URL para rodar os testes de integração";
@@ -69,7 +70,7 @@ test("migrações: versionadas, idempotentes e registradas", { skip: pular }, as
   await outro.contarUsuarios(); // segunda execução não reaplica nada
   await outro.encerrar();
   const { rows } = await sql.query("select versao from schema_migracoes order by versao");
-  assert.deepEqual(rows.map((r) => r.versao), [1, 2]);
+  assert.deepEqual(rows.map((r) => r.versao), [1, 2, 3]);
   const idx = await sql.query("select 1 from pg_indexes where indexname = 'ocorrencias_protocolo_unico'");
   assert.equal(idx.rowCount, 1);
 });
@@ -221,4 +222,65 @@ test("protocolos repetidos já existentes: a restrição não é criada, nada é
   await c.end();
   await admin.query(`drop database ${banco2} with (force)`);
   await admin.end();
+});
+
+test("consulta paginada: filtros, ordem, totais e resumos do SQL iguais aos da referência em TypeScript", { skip: pular }, async () => {
+  const pr = (tipo: "ARQUIVADO" | "NOTIFICADO" | "MULTADO", extra = {}) => ({
+    tipo, descricao: "x", decididoEm: "2026-10-05T10:00:00.000Z", decididoPor: { id: "adm", nome: "Adm" }, ...extra,
+  });
+  const fund = (normaId: string, documento: "REGULAMENTO" | "ESTATUTO", citacaoCurta: string) => ({
+    normaId, documento, secaoNumero: "II", secaoTitulo: "T", texto: "t", citacao: `Item 8 do tópico II – ${citacaoCurta}`, citacaoCurta,
+    origem: "MANUAL" as const, confirmadoEm: "",
+  });
+  const exemplos: Partial<NovaOcorrencia>[] = [
+    { data: "2026-10-01", ocorrencia: "Perturbação de sossego", nome: "José Ávila", quadra: "09", lote: "008", fundamentacaoPrincipal: fund("RI-II-8", "REGULAMENTO", "RI II, item 8"), registradoPor: { id: "l1", nome: "Lia" } },
+    { data: "2026-10-01", ocorrencia: "perturbacao de sossego", nome: "Maria 50% Silva", quadra: "9", lote: "8", registradoPor: { id: "l2", nome: "Leo" }, status: "AGUARDANDO_ANALISE" },
+    { data: "2026-10-02", ocorrencia: "Cachorro solto", nome: "Ana_Clara", quadra: "12", lote: "4", fundamentacaoPrincipal: fund("ES-11-a", "ESTATUTO", "ES art. 11, a"), providencia: pr("NOTIFICADO", { esclarecimentoFim: "2026-10-10", dataRecebimento: "2026-10-03" }) as never, status: "NOTIFICADA", registradoPor: { id: "l1", nome: "Lia" } },
+    { data: "2026-09-15", ocorrencia: "Som alto", nome: "Pedro", quadra: "3", lote: "6", providencia: pr("MULTADO", { multaValor: 350.5, dataRecebimento: "2026-10-01", decididoEm: "2026-10-20T00:00:00.000Z" }) as never, status: "MULTADA" },
+    { data: "2026-09-10", ocorrencia: "Queimada", nome: "Lúcia", quadra: "45", lote: "9", providencia: pr("ARQUIVADO") as never, status: "ARQUIVADA", registradoPor: { id: "l2", nome: "Leo" } },
+    { data: "2026-10-28", ocorrencia: "Som alto", nome: "Cristiane", quadra: "7", lote: "22", providencia: pr("MULTADO", { multaValor: 100, recursoSituacao: "APRESENTADO", decididoEm: "2026-10-28T00:00:00.000Z" }) as never, status: "MULTADA" },
+  ];
+  for (const e of exemplos) await criar(e);
+
+  const todas = await repo.listarOcorrencias();
+  const filtros: FiltroOcorrencias[] = [
+    {}, { busca: "sossego" }, { busca: "PERTURBACAO" }, { busca: "ávila" }, { busca: "50%" }, { busca: "_" }, { busca: "q9 l8" }, { busca: "lia" },
+    { nome: "lucia" }, { quadra: "009" }, { quadra: "9", lote: "08" }, { ocorrencia: "som" }, { de: "2026-10-01", ate: "2026-10-02" },
+    { documento: "SEM" }, { documento: "ESTATUTO" }, { documento: "REGULAMENTO" }, { dispositivo: "item 8" }, { dispositivo: "art. 11" },
+    { status: "MULTADA" }, { pendentes: true }, { registradoPor: "l1" }, { registradoPor: "l2", busca: "sossego" }, { busca: "nada-disso" },
+  ];
+  for (const f of filtros) {
+    const esperado = paginar(todas, f, 1, 100);
+    const obtido = await repo.buscarOcorrencias(f, 1, 100);
+    assert.equal(obtido.total, esperado.total, `total ${JSON.stringify(f)}`);
+    assert.deepEqual(obtido.itens.map((o) => o.id), esperado.itens.map((o) => o.id), `ordem/itens ${JSON.stringify(f)}`);
+  }
+  assert.deepEqual(
+    (await repo.buscarOcorrencias({ pendentes: true }, 1, 100, { crescente: true })).itens.map((o) => o.id),
+    paginar(todas, { pendentes: true }, 1, 100, true).itens.map((o) => o.id),
+    "ordem crescente",
+  );
+  // Paginação
+  const p1 = await repo.buscarOcorrencias({}, 1, 4);
+  const p2 = await repo.buscarOcorrencias({}, 2, 4);
+  assert.equal(p1.itens.length, 4);
+  assert.equal(p1.total, todas.length);
+  assert.equal(new Set([...p1.itens, ...p2.itens].map((o) => o.id)).size, p1.itens.length + p2.itens.length);
+  assert.equal((await repo.buscarOcorrencias({}, 999, 4)).total, todas.length, "página além do fim informa o total");
+  assert.equal(p1.itens[0].historico, undefined, "listagem sem a linha do tempo");
+
+  const hoje = "2026-10-28";
+  assert.deepEqual(await repo.estatisticas({}, hoje), estatisticas(todas, hoje));
+  assert.deepEqual(await repo.estatisticas({ registradoPor: "l1" }, hoje), estatisticas(todas.filter((o) => o.registradoPor?.id === "l1"), hoje));
+  const rSql = await repo.resumoProvidencias(hoje);
+  const rTs = resumoProvidencias(todas, hoje);
+  assert.deepEqual({ ...rSql, autores: [] }, { ...rTs, autores: [] });
+  assert.deepEqual(
+    [...rSql.autores].sort((a, b) => a.nome.localeCompare(b.nome)),
+    [...rTs.autores].sort((a, b) => a.nome.localeCompare(b.nome)),
+  );
+  assert.deepEqual(
+    (await repo.listarEmAcompanhamento(hoje)).map((o) => o.id).sort(),
+    todas.filter((o) => emAcompanhamento(o, hoje)).map((o) => o.id).sort(),
+  );
 });

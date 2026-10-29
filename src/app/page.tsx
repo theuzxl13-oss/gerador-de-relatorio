@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { repositorio } from "@/server/db";
 import { hojeISO, dataCurta } from "@/lib/relatorio";
-import { normalizar } from "@/lib/analysis/texto";
 import { Aviso, SeloStatus } from "@/components/ui";
 import { exigirPagina } from "@/server/pagina";
-import { pode, podeVerOcorrencia, type Acao } from "@/lib/permissoes";
-import { aguardaDecisao } from "@/lib/providencia";
+import { pode, type Acao } from "@/lib/permissoes";
 
 export const dynamic = "force-dynamic";
 
@@ -20,26 +18,22 @@ const ATALHOS: { href: string; titulo: string; texto: string; destaque?: boolean
 export default async function Inicio({ searchParams }: { searchParams: Promise<{ "sem-permissao"?: string }> }) {
   const usuario = await exigirPagina();
   const semPermissao = (await searchParams)["sem-permissao"] === "1";
-  // Líderes, porteiros e rondas veem apenas os relatórios que geraram.
-  const ocorrencias = (await repositorio().listarOcorrencias()).filter((o) => podeVerOcorrencia(usuario, o));
-  const atalhos = ATALHOS.filter((a) => !a.acao || pode(usuario.perfil, a.acao)).slice(0, 4);
-  const pendentes = pode(usuario.perfil, "painel") ? ocorrencias.filter(aguardaDecisao).length : 0;
+  // Líderes, porteiros e rondas veem apenas os relatórios que geraram. Contagens feitas no banco.
+  const repo = repositorio();
+  const visibilidade = pode(usuario.perfil, "verTodas") ? {} : { registradoPor: usuario.id };
   const hoje = hojeISO();
-  const mes = hoje.slice(0, 7);
-
-  const totalHoje = ocorrencias.filter((o) => o.data === hoje).length;
-  const totalMes = ocorrencias.filter((o) => o.data.startsWith(mes)).length;
-
-  const contagem = new Map<string, { rotulo: string; n: number }>();
-  for (const o of ocorrencias) {
-    const chave = normalizar(o.ocorrencia);
-    const atual = contagem.get(chave) ?? { rotulo: o.ocorrencia, n: 0 };
-    atual.n++;
-    contagem.set(chave, atual);
-  }
-  const frequentes = [...contagem.values()].sort((a, b) => b.n - a.n).slice(0, 6);
+  const [est, recentesPagina, pendentesPagina] = await Promise.all([
+    repo.estatisticas(visibilidade, hoje),
+    repo.buscarOcorrencias(visibilidade, 1, 5),
+    pode(usuario.perfil, "painel") ? repo.buscarOcorrencias({ pendentes: true }, 1, 1) : Promise.resolve(null),
+  ]);
+  const atalhos = ATALHOS.filter((a) => !a.acao || pode(usuario.perfil, a.acao)).slice(0, 4);
+  const pendentes = pendentesPagina?.total ?? 0;
+  const totalHoje = est.hoje;
+  const totalMes = est.mes;
+  const frequentes = est.frequentes;
   const maxFreq = frequentes[0]?.n ?? 1;
-  const recentes = ocorrencias.slice(0, 5);
+  const recentes = recentesPagina.itens;
 
   return (
     <div className="space-y-6">
@@ -81,7 +75,7 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
         {[
           { rotulo: "Ocorrências hoje", valor: totalHoje },
           { rotulo: "Ocorrências no mês", valor: totalMes },
-          { rotulo: pode(usuario.perfil, "verTodas") ? "Total de relatórios" : "Meus relatórios", valor: ocorrencias.length },
+          { rotulo: pode(usuario.perfil, "verTodas") ? "Total de relatórios" : "Meus relatórios", valor: est.total },
         ].map((k) => (
           <div key={k.rotulo} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="text-xs font-medium text-gray-500 sm:text-sm">{k.rotulo}</div>

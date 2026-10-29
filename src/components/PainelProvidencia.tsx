@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, ErroConflito } from "@/lib/api-cliente";
+import { gerarPdfCarta } from "@/lib/pdf";
 import { alertasPrazo, formatarReais, multaMaxima, prazoRecurso, somarDias } from "@/lib/providencia";
 import { dataCurta, hojeISO } from "@/lib/relatorio";
 import {
@@ -89,6 +90,8 @@ export function PainelProvidencia({
   const [f, setF] = useState<Form>(() => paraForm(p, prazoEsclarecimentoDias, reincidencias.length > 0));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [gerandoCarta, setGerandoCarta] = useState(false);
+  const [avisosCarta, setAvisosCarta] = useState<string[]>([]);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }));
   const maximo = multaMaxima(valorTaxa, f.reincidente);
   const alertas = alertasPrazo(ocorrencia, hojeISO());
@@ -105,6 +108,22 @@ export function PainelProvidencia({
       setErro(e instanceof ErroConflito ? `${e.message} (Seus dados digitados ainda estão no formulário: copie-os antes de recarregar.)` : (e as Error).message);
     } finally {
       setSalvando(false);
+    }
+  }
+
+  /** Carta ao morador: texto montado no servidor (normas da base), PDF gerado aqui. */
+  async function carta() {
+    setErro("");
+    setGerandoCarta(true);
+    try {
+      const c = await api.carta(ocorrencia.id);
+      setAvisosCarta(c.avisos);
+      const tipo = p?.tipo === "MULTADO" ? "Multa" : "Notificacao";
+      await gerarPdfCarta(c, `${tipo}_${ocorrencia.protocolo || ocorrencia.data}_Q${ocorrencia.quadra}_L${ocorrencia.lote}.pdf`.replace(/[^\w.-]+/g, "_"));
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setGerandoCarta(false);
     }
   }
 
@@ -203,11 +222,26 @@ export function PainelProvidencia({
         </dl>
       )}
 
+      {!editando && erro && <Aviso tipo="erro">{erro}</Aviso>}
+      {avisosCarta.length > 0 && (
+        <Aviso tipo="alerta" titulo="Confira antes de entregar a carta">
+          <ul className="list-disc pl-5">
+            {avisosCarta.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </Aviso>
+      )}
       {!editando && podeDecidir && (
         <div className="flex flex-wrap gap-2">
           <Botao variante={p ? "secundario" : "primario"} onClick={() => setEditando(true)}>
             {p ? (p.tipo === "NOTIFICADO" && (p.esclarecimentoResultado ?? "PENDENTE") === "PENDENTE" ? "Registrar esclarecimento / atualizar" : "Atualizar providência") : "Registrar providência"}
           </Botao>
+          {p && p.tipo !== "ARQUIVADO" && (
+            <Botao variante="secundario" onClick={carta} disabled={gerandoCarta}>
+              {gerandoCarta ? "Gerando carta..." : p.tipo === "MULTADO" ? "Carta de multa (PDF)" : "Carta de notificação (PDF)"}
+            </Botao>
+          )}
           {p && (
             <Botao variante="fantasma" className="!text-red-700 hover:!bg-red-50" onClick={desfazer}>
               Desfazer

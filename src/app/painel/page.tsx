@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { repositorio } from "@/server/db";
 import { exigirPagina } from "@/server/pagina";
-import { aguardaDecisao, alertasPrazo, formatarReais, type Alerta } from "@/lib/providencia";
+import { formatarReais, type Alerta } from "@/lib/providencia";
+import { comAlertas } from "@/lib/consulta";
 import { dataCurta, hojeISO } from "@/lib/relatorio";
-import { ESCLARECIMENTO_LABEL, PROVIDENCIA_LABEL, type Ocorrencia, type TipoProvidencia } from "@/lib/types";
+import { ESCLARECIMENTO_LABEL, PROVIDENCIA_LABEL, type Ocorrencia } from "@/lib/types";
 import { SeloStatus } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -46,48 +47,26 @@ function Secao({ titulo, vazio, children, acao }: { titulo: string; vazio: strin
 
 export default async function PainelProvidencias() {
   const usuario = await exigirPagina("painel");
-  const todas = await repositorio().listarOcorrencias();
+  const repo = repositorio();
   const hoje = hojeISO();
-  const mes = hoje.slice(0, 7);
-
-  const pendentes = todas.filter(aguardaDecisao).sort((a, b) => a.data.localeCompare(b.data));
-  const comAlerta = todas
-    .map((o) => ({ o, alertas: alertasPrazo(o, hoje) }))
-    .filter((x) => x.alertas.length > 0)
-    .sort((a, b) => (a.o.providencia?.esclarecimentoFim ?? "").localeCompare(b.o.providencia?.esclarecimentoFim ?? ""));
-  const notificadosPendentes = todas.filter((o) => o.providencia?.tipo === "NOTIFICADO" && (o.providencia.esclarecimentoResultado ?? "PENDENTE") === "PENDENTE");
+  // Contagens no banco; só as listas exibidas são carregadas.
+  const [resumo, pendentesPagina, acompanhamento] = await Promise.all([
+    repo.resumoProvidencias(hoje),
+    repo.buscarOcorrencias({ pendentes: true }, 1, 30, { crescente: true }),
+    repo.listarEmAcompanhamento(hoje),
+  ]);
+  const pendentes = pendentesPagina.itens;
+  const comAlerta = comAlertas(acompanhamento, hoje);
   const vencidos = comAlerta.filter((x) => x.alertas.some((a) => a.tipo === "esclarecimento-vencido")).length;
-  const multas = todas.filter((o) => o.providencia?.tipo === "MULTADO");
-  const multasMes = multas.filter((o) => o.providencia!.decididoEm.slice(0, 7) === mes);
-  const recursos = todas.filter((o) => o.providencia?.recursoSituacao === "APRESENTADO");
-
-  const porTipo = (Object.keys(PROVIDENCIA_LABEL) as TipoProvidencia[]).map((t) => {
-    const lista = todas.filter((o) => o.providencia?.tipo === t);
-    return { t, total: lista.length, mes: lista.filter((o) => o.providencia!.decididoEm.slice(0, 7) === mes).length };
-  });
-
-  const notificados = todas.filter((o) => o.providencia?.tipo === "NOTIFICADO");
-  const resultados = (["PENDENTE", "ESCLARECEU", "NAO_ESCLARECEU"] as const).map((r) => ({
-    r,
-    n: notificados.filter((o) => (o.providencia!.esclarecimentoResultado ?? "PENDENTE") === r).length,
-  }));
-
-  const autores = new Map<string, { nome: string; total: number; mes: number; pendentes: number }>();
-  for (const o of todas) {
-    const chave = o.registradoPor?.id ?? "-";
-    const a = autores.get(chave) ?? { nome: o.registradoPor?.nome ?? "Sem login (antes dos usuários)", total: 0, mes: 0, pendentes: 0 };
-    a.total++;
-    if (o.data.startsWith(mes)) a.mes++;
-    if (aguardaDecisao(o)) a.pendentes++;
-    autores.set(chave, a);
-  }
-  const listaAutores = [...autores.values()].sort((a, b) => b.mes - a.mes || b.total - a.total);
+  const resultados = (["PENDENTE", "ESCLARECEU", "NAO_ESCLARECEU"] as const).map((r) => ({ r, n: resumo.notificacoes[r] }));
+  const porTipo = resumo.porTipo.map((x) => ({ t: x.tipo, total: x.total, mes: x.mes }));
+  const listaAutores = resumo.autores.map((a) => ({ ...a, nome: a.nome || "Sem login (antes dos usuários)" }));
 
   const indicadores = [
-    { rotulo: "Aguardando providência", valor: pendentes.length, cor: pendentes.length ? "text-amber-700" : "text-marca-800" },
-    { rotulo: "Notificados aguardando esclarecimento", valor: notificadosPendentes.length, cor: "text-violet-700" },
+    { rotulo: "Aguardando providência", valor: resumo.pendentes, cor: resumo.pendentes ? "text-amber-700" : "text-marca-800" },
+    { rotulo: "Notificados aguardando esclarecimento", valor: resumo.notificacoes.PENDENTE, cor: "text-violet-700" },
     { rotulo: "Prazos de esclarecimento vencidos", valor: vencidos, cor: vencidos ? "text-red-700" : "text-marca-800" },
-    { rotulo: "Multas no mês", valor: `${multasMes.length} · ${formatarReais(multasMes.reduce((s, o) => s + (o.providencia!.multaValor ?? 0), 0))}`, cor: "text-red-800" },
+    { rotulo: "Multas no mês", valor: `${resumo.multas.mes} · ${formatarReais(resumo.multas.valorMes)}`, cor: "text-red-800" },
   ];
 
   return (
@@ -118,8 +97,8 @@ export default async function PainelProvidencias() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Secao titulo={`Aguardando providência (${pendentes.length})`} vazio="Nenhum relatório aguardando decisão.">
-          {pendentes.slice(0, 30).map((o) => (
+        <Secao titulo={`Aguardando providência (${resumo.pendentes})${resumo.pendentes > pendentes.length ? ` · ${pendentes.length} mais antigas` : ""}`} vazio="Nenhum relatório aguardando decisão.">
+          {pendentes.map((o) => (
             <Linha key={o.id} o={o} detalhe={`Há ${Math.max(0, Math.round((Date.parse(hoje) - Date.parse(o.data)) / 86_400_000))} dia(s)`} />
           ))}
         </Secao>
@@ -153,8 +132,8 @@ export default async function PainelProvidencias() {
             </tbody>
           </table>
           <p className="mt-3 text-xs text-gray-500">
-            Total em multas: <strong>{formatarReais(multas.reduce((s, o) => s + (o.providencia!.multaValor ?? 0), 0))}</strong>
-            {recursos.length > 0 && ` · ${recursos.length} recurso(s) em análise`}
+            Total em multas: <strong>{formatarReais(resumo.multas.valorTotal)}</strong>
+            {resumo.recursosEmAnalise > 0 && ` · ${resumo.recursosEmAnalise} recurso(s) em análise`}
           </p>
         </section>
 

@@ -4,6 +4,7 @@ import { NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
 import { normalizarPerfil } from "@/lib/permissoes";
 import { CONFIGURACOES_PADRAO, type AnexoInfo, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
+import { simplificar, type Estatisticas, type FiltroOcorrencias, type Pagina, type ResumoProvidencias } from "@/lib/consulta";
 import { configurarConexao } from "./config";
 import { ErroConflito, ErroValidacao } from "./validacao";
 import type { Alteracao, EventoAuditoriaGravado, NovoAnexo, NovaOcorrencia, RegistroAuditoria, Repositorio } from "./repositorio";
@@ -96,7 +97,62 @@ drop trigger if exists auditoria_sem_truncate on auditoria;
 create trigger auditoria_sem_truncate before truncate on auditoria
   for each statement execute function auditoria_somente_insercao();`,
   },
+  {
+    versao: 3,
+    descricao: "Índices para consultas paginadas e para envios da fila offline sem duplicar",
+    sql: `
+create index if not exists ocorrencias_autor_idx on ocorrencias ((dados->'registradoPor'->>'id'));
+create index if not exists ocorrencias_status_idx on ocorrencias ((dados->>'status'));
+create index if not exists ocorrencias_ordem_idx on ocorrencias (data desc, (dados->>'criadoEm') collate "C" desc, id desc);
+create unique index if not exists ocorrencias_id_cliente_unico on ocorrencias ((dados->'registradoPor'->>'id'), (dados->>'idCliente'))
+  where dados->>'idCliente' is not null;`,
+  },
 ];
+
+/** Mesma ordem de `ordenar` (src/lib/consulta.ts): data, instante do registro e id. */
+const ORDEM = `data desc, (dados->>'criadoEm') collate "C" desc, id desc`;
+const ORDEM_CRESCENTE = `data, (dados->>'criadoEm') collate "C", id`;
+
+/** Equivalente SQL de `simplificar` (minúsculas, sem acentos). */
+const SEM_ACENTO = (expr: string) => `translate(lower(coalesce(${expr}, '')), 'áàâãäåéèêëíìîïóòôõöúùûüçñý', 'aaaaaaeeeeiiiiooooouuuucny')`;
+const TEXTO_BUSCA = `concat_ws(' ', dados->>'protocolo', dados->>'nome', dados->>'ocorrencia', dados->>'descricao',
+  'q' || (dados->>'quadra') || ' l' || (dados->>'lote'), dados->'fundamentacaoPrincipal'->>'citacaoCurta',
+  dados->'fundamentacaoComplementar'->>'citacaoCurta', dados->'registradoPor'->>'nome')`;
+const escaparLike = (t: string) => t.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/** Monta o WHERE parametrizado equivalente a `correspondeFiltro` (src/lib/consulta.ts). */
+export function sqlDoFiltro(f: FiltroOcorrencias): { where: string; params: unknown[] } {
+  const cond: string[] = [];
+  const params: unknown[] = [];
+  const p = (v: unknown) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  const contem = (expr: string, termo?: string) => {
+    if (termo?.trim()) cond.push(`${SEM_ACENTO(expr)} like ${p(`%${escaparLike(simplificar(termo.trim()))}%`)}`);
+  };
+  if (f.registradoPor) cond.push(`dados->'registradoPor'->>'id' = ${p(f.registradoPor)}`);
+  if (f.pendentes) cond.push(`dados->'providencia' is null and dados->>'status' in ('REGISTRADA', 'AGUARDANDO_ANALISE')`);
+  contem(TEXTO_BUSCA, f.busca);
+  contem(`dados->>'nome'`, f.nome);
+  contem(`dados->>'ocorrencia'`, f.ocorrencia);
+  if (f.quadra) cond.push(`lower(ltrim(btrim(dados->>'quadra'), '0')) = ${p(f.quadra.trim().replace(/^0+/, "").toLowerCase())}`);
+  if (f.lote) cond.push(`lower(ltrim(btrim(dados->>'lote'), '0')) = ${p(f.lote.trim().replace(/^0+/, "").toLowerCase())}`);
+  if (f.de) cond.push(`data >= ${p(f.de)}::date`);
+  if (f.ate) cond.push(`data <= ${p(f.ate)}::date`);
+  if (f.status) cond.push(`dados->>'status' = ${p(f.status)}`);
+  if (f.documento === "SEM") cond.push(`dados->'fundamentacaoPrincipal' is null`);
+  else if (f.documento) {
+    const d = p(f.documento);
+    cond.push(`(dados->'fundamentacaoPrincipal'->>'documento' = ${d} or dados->'fundamentacaoComplementar'->>'documento' = ${d})`);
+  }
+  if (f.dispositivo?.trim()) {
+    const t = p(`%${escaparLike(simplificar(f.dispositivo.trim()))}%`);
+    const cit = (k: string) => SEM_ACENTO(`(dados->'${k}'->>'citacao') || ' ' || (dados->'${k}'->>'citacaoCurta')`);
+    cond.push(`(${cit("fundamentacaoPrincipal")} like ${t} or (dados->'fundamentacaoComplementar' is not null and ${cit("fundamentacaoComplementar")} like ${t}))`);
+  }
+  return { where: cond.length ? `where ${cond.join(" and ")}` : "", params };
+}
 
 /** Índice que garante protocolo único (ignorando maiúsculas/espaços; protocolo em branco é permitido). */
 const INDICE_PROTOCOLO_UNICO = "ocorrencias_protocolo_unico";
@@ -328,8 +384,113 @@ export class RepositorioPostgres implements Repositorio {
 
   async listarOcorrencias() {
     await this.iniciar();
-    const { rows } = await this.pool.query("select dados, versao from ocorrencias order by data desc, criado_em desc");
+    const { rows } = await this.pool.query(`select dados, versao from ocorrencias order by ${ORDEM}`);
     return rows.map(RepositorioPostgres.ler);
+  }
+
+  async buscarOcorrencias(filtro: FiltroOcorrencias, pagina: number, porPagina: number, opcoes: { crescente?: boolean } = {}): Promise<Pagina<Ocorrencia>> {
+    await this.iniciar();
+    const { where, params } = sqlDoFiltro(filtro);
+    const n = params.length;
+    const { rows } = await this.pool.query(
+      `select dados - 'historico' as dados, versao, count(*) over ()::int as total from ocorrencias ${where}
+       order by ${opcoes.crescente ? ORDEM_CRESCENTE : ORDEM} limit $${n + 1} offset $${n + 2}`,
+      [...params, porPagina, (pagina - 1) * porPagina],
+    );
+    let total = rows[0]?.total ?? 0;
+    if (!rows.length && pagina > 1) {
+      const c = await this.pool.query(`select count(*)::int as n from ocorrencias ${where}`, params);
+      total = c.rows[0].n;
+    }
+    return { itens: rows.map(RepositorioPostgres.ler), total, pagina, porPagina };
+  }
+
+  async estatisticas(filtro: Pick<FiltroOcorrencias, "registradoPor">, hoje: string): Promise<Estatisticas> {
+    await this.iniciar();
+    const { where, params } = sqlDoFiltro({ registradoPor: filtro.registradoPor });
+    const n = params.length;
+    const { rows } = await this.pool.query(
+      `select count(*) filter (where data = $${n + 1}::date)::int as hoje,
+              count(*) filter (where to_char(data, 'YYYY-MM') = $${n + 2})::int as mes,
+              count(*)::int as total
+         from ocorrencias ${where}`,
+      [...params, hoje, hoje.slice(0, 7)],
+    );
+    const freq = await this.pool.query(
+      `select rotulo, n from (
+         select (array_agg(dados->>'ocorrencia' order by ${ORDEM}))[1] as rotulo, count(*)::int as n from ocorrencias ${where}
+         group by btrim(${SEM_ACENTO("dados->>'ocorrencia'")})
+       ) g order by n desc, rotulo collate "C" limit 6`,
+      params,
+    );
+    return { ...rows[0], frequentes: freq.rows };
+  }
+
+  async resumoProvidencias(hoje: string): Promise<ResumoProvidencias> {
+    await this.iniciar();
+    const mes = hoje.slice(0, 7);
+    const { rows: g } = await this.pool.query(
+      `select
+         count(*) filter (where dados->'providencia' is null and dados->>'status' in ('REGISTRADA', 'AGUARDANDO_ANALISE'))::int as pendentes,
+         count(*) filter (where p->>'tipo' = 'ARQUIVADO')::int as arq_total,
+         count(*) filter (where p->>'tipo' = 'ARQUIVADO' and left(p->>'decididoEm', 7) = $1)::int as arq_mes,
+         count(*) filter (where p->>'tipo' = 'NOTIFICADO')::int as not_total,
+         count(*) filter (where p->>'tipo' = 'NOTIFICADO' and left(p->>'decididoEm', 7) = $1)::int as not_mes,
+         count(*) filter (where p->>'tipo' = 'MULTADO')::int as mul_total,
+         count(*) filter (where p->>'tipo' = 'MULTADO' and left(p->>'decididoEm', 7) = $1)::int as mul_mes,
+         coalesce(sum((p->>'multaValor')::numeric) filter (where p->>'tipo' = 'MULTADO'), 0)::float8 as mul_valor,
+         coalesce(sum((p->>'multaValor')::numeric) filter (where p->>'tipo' = 'MULTADO' and left(p->>'decididoEm', 7) = $1), 0)::float8 as mul_valor_mes,
+         count(*) filter (where p->>'tipo' = 'NOTIFICADO' and coalesce(p->>'esclarecimentoResultado', 'PENDENTE') = 'PENDENTE')::int as esc_pend,
+         count(*) filter (where p->>'tipo' = 'NOTIFICADO' and p->>'esclarecimentoResultado' = 'ESCLARECEU')::int as esc_sim,
+         count(*) filter (where p->>'tipo' = 'NOTIFICADO' and p->>'esclarecimentoResultado' = 'NAO_ESCLARECEU')::int as esc_nao,
+         count(*) filter (where p->>'recursoSituacao' = 'APRESENTADO')::int as recursos
+       from (select dados, dados->'providencia' as p from ocorrencias) t`,
+      [mes],
+    );
+    const r = g[0];
+    const { rows: autores } = await this.pool.query(
+      `select coalesce(min(dados->'registradoPor'->>'nome'), '') as nome, count(*)::int as total,
+              count(*) filter (where to_char(data, 'YYYY-MM') = $1)::int as mes,
+              count(*) filter (where dados->'providencia' is null and dados->>'status' in ('REGISTRADA', 'AGUARDANDO_ANALISE'))::int as pendentes
+         from ocorrencias group by dados->'registradoPor'->>'id' order by mes desc, total desc, nome`,
+      [mes],
+    );
+    const dinheiro = (v: number) => Math.round(v * 100) / 100;
+    return {
+      pendentes: r.pendentes,
+      porTipo: [
+        { tipo: "ARQUIVADO", total: r.arq_total, mes: r.arq_mes },
+        { tipo: "NOTIFICADO", total: r.not_total, mes: r.not_mes },
+        { tipo: "MULTADO", total: r.mul_total, mes: r.mul_mes },
+      ],
+      notificacoes: { PENDENTE: r.esc_pend, ESCLARECEU: r.esc_sim, NAO_ESCLARECEU: r.esc_nao },
+      multas: { total: r.mul_total, valorTotal: dinheiro(r.mul_valor), mes: r.mul_mes, valorMes: dinheiro(r.mul_valor_mes) },
+      recursosEmAnalise: r.recursos,
+      autores,
+    };
+  }
+
+  async listarEmAcompanhamento(hoje: string) {
+    await this.iniciar();
+    const { rows } = await this.pool.query(
+      `select dados, versao from ocorrencias
+        where dados->'providencia' is not null and dados->'providencia'->>'tipo' <> 'ARQUIVADO'
+          and ((dados->'providencia'->>'tipo' = 'NOTIFICADO' and coalesce(dados->'providencia'->>'esclarecimentoResultado', 'PENDENTE') = 'PENDENTE')
+               or dados->'providencia'->>'recursoSituacao' = 'APRESENTADO'
+               or dados->'providencia'->>'dataRecebimento' >= to_char($1::date - 31, 'YYYY-MM-DD'))
+        order by data desc`,
+      [hoje],
+    );
+    return rows.map(RepositorioPostgres.ler);
+  }
+
+  async obterPorIdCliente(usuarioId: string, idCliente: string) {
+    await this.iniciar();
+    const { rows } = await this.pool.query(
+      "select dados, versao from ocorrencias where dados->'registradoPor'->>'id' = $1 and dados->>'idCliente' = $2",
+      [usuarioId, idCliente],
+    );
+    return rows[0] ? RepositorioPostgres.ler(rows[0]) : null;
   }
 
   async obterOcorrencia(id: string) {
@@ -540,6 +701,7 @@ function traduzirErro(e: unknown): unknown {
   if (err?.code === "23505") {
     if (err.constraint === INDICE_PROTOCOLO_UNICO) return new ErroConflito("Já existe uma ocorrência com este protocolo.");
     if (err.constraint === "usuarios_login_idx") return new ErroConflito("Este login já está em uso.");
+    if (err.constraint === "ocorrencias_id_cliente_unico") return new ErroConflito("Este relatório já foi enviado.");
     return new ErroConflito("Registro duplicado.");
   }
   return e;

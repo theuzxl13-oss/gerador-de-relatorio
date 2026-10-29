@@ -1,3 +1,4 @@
+import type { ConteudoCarta } from "./carta";
 import type { ConteudoRelatorio } from "./relatorio";
 
 /**
@@ -77,11 +78,28 @@ function caber(larg: number, alt: number, maxL: number, maxA: number) {
   return { l: larg * k, a: alt * k };
 }
 
-/** Gera o relatório em PDF A4 e inicia o download. */
-export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
+interface Identidade {
+  nomeCabecalho: string;
+  cnpj: string;
+  slogan: string;
+  rodape: string;
+}
+
+interface OpcoesTexto {
+  tamanho?: number;
+  estilo?: string;
+  espaco?: number;
+  justificar?: boolean;
+  recuoPrimeira?: number;
+  entrelinha?: number;
+  alinhar?: "center";
+}
+
+/** Documento A4 com cabeçalho, rodapé e escrita de texto com quebra de página. */
+async function novoDocumento(r: Identidade) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const [logo, ...fotos] = await Promise.all([carregarLogo(), ...r.imagens.map((i) => carregarFoto(i.url))]);
+  const logo = await carregarLogo();
 
   const cabecalho = () => {
     doc.setTextColor(0, 0, 0);
@@ -135,89 +153,107 @@ export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
     });
   };
 
-  const novaPagina = () => {
-    doc.addPage();
-    cabecalho();
-    return 45;
+  const d = {
+    doc,
+    y: 45,
+    novaPagina() {
+      doc.addPage();
+      cabecalho();
+      d.y = 45;
+      return d.y;
+    },
+    texto(t: string, x: number, opts: OpcoesTexto = {}) {
+      const tamanho = opts.tamanho ?? 12;
+      doc.setFont("times", opts.estilo ?? "italic");
+      doc.setFontSize(tamanho);
+      const entrelinha = opts.entrelinha ?? tamanho * 0.3528 * 1.5;
+      const largura = 210 - MR - x;
+      // Recuo apenas na primeira linha (como no parágrafo do modelo).
+      const recuo = opts.recuoPrimeira ?? 0;
+      const primeira: string[] = doc.splitTextToSize(t, largura - recuo);
+      const linhas: { txt: string; x: number; larg: number }[] = [];
+      if (recuo && primeira.length) {
+        linhas.push({ txt: primeira[0], x: x + recuo, larg: largura - recuo });
+        const resto = t.slice(t.indexOf(primeira[0]) + primeira[0].length).trim();
+        if (resto) for (const l of doc.splitTextToSize(resto, largura) as string[]) linhas.push({ txt: l, x, larg: largura });
+      } else {
+        for (const l of primeira) linhas.push({ txt: l, x, larg: largura });
+      }
+      linhas.forEach((linha, i) => {
+        if (d.y > LIMITE) d.novaPagina();
+        const ultima = i === linhas.length - 1;
+        if (opts.alinhar === "center") doc.text(linha.txt, 105, d.y, { align: "center" });
+        else if (opts.justificar && !ultima) doc.text(linha.txt, linha.x, d.y, { align: "justify", maxWidth: linha.larg });
+        else doc.text(linha.txt, linha.x, d.y);
+        d.y += entrelinha;
+      });
+      d.y += opts.espaco ?? 0;
+    },
+    /** Linhas sublinhadas de assinatura. */
+    assinatura(linhas: string[], x: number) {
+      if (d.y + linhas.length * ESPACO_LINHA > LIMITE) d.novaPagina();
+      doc.setFont("times", "italic");
+      doc.setFontSize(12);
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.25);
+      for (const linha of linhas) {
+        doc.text(linha, x, d.y);
+        doc.line(x, d.y + 0.8, x + doc.getTextWidth(linha), d.y + 0.8);
+        d.y += ESPACO_LINHA;
+      }
+    },
+    salvar(nomeArquivo: string) {
+      const paginas = doc.getNumberOfPages();
+      for (let p = 1; p <= paginas; p++) {
+        doc.setPage(p);
+        rodape();
+      }
+      doc.save(nomeArquivo);
+    },
   };
-
   cabecalho();
-  let y = 45;
+  return d;
+}
 
-  const texto = (
-    t: string,
-    x: number,
-    opts: { tamanho?: number; estilo?: string; espaco?: number; justificar?: boolean; recuoPrimeira?: number; entrelinha?: number } = {},
-  ) => {
-    const tamanho = opts.tamanho ?? 12;
-    doc.setFont("times", opts.estilo ?? "italic");
-    doc.setFontSize(tamanho);
-    const entrelinha = opts.entrelinha ?? tamanho * 0.3528 * 1.5;
-    const largura = 210 - MR - x;
-    // Recuo apenas na primeira linha (como no parágrafo do modelo).
-    const recuo = opts.recuoPrimeira ?? 0;
-    const primeira: string[] = doc.splitTextToSize(t, largura - recuo);
-    const linhas: { txt: string; x: number; larg: number }[] = [];
-    if (recuo && primeira.length) {
-      linhas.push({ txt: primeira[0], x: x + recuo, larg: largura - recuo });
-      const resto = t.slice(t.indexOf(primeira[0]) + primeira[0].length).trim();
-      if (resto) for (const l of doc.splitTextToSize(resto, largura) as string[]) linhas.push({ txt: l, x, larg: largura });
-    } else {
-      for (const l of primeira) linhas.push({ txt: l, x, larg: largura });
-    }
-    linhas.forEach((linha, i) => {
-      if (y > LIMITE) y = novaPagina();
-      const ultima = i === linhas.length - 1;
-      if (opts.justificar && !ultima) doc.text(linha.txt, linha.x, y, { align: "justify", maxWidth: linha.larg });
-      else doc.text(linha.txt, linha.x, y);
-      y += entrelinha;
-    });
-    y += opts.espaco ?? 0;
-  };
+const ESPACO_LINHA = 11; // distância entre as linhas do corpo no modelo
+const ALTURA_LINHA = 12 * 0.3528 * 1.5;
 
-  const ESPACO_LINHA = 11; // distância entre as linhas do corpo no modelo
-  const ALTURA_LINHA = 12 * 0.3528 * 1.5;
-  texto(r.localData, ML + 21, { espaco: ESPACO_LINHA * 1.6 - ALTURA_LINHA });
+/** Gera o relatório em PDF A4 e inicia o download. */
+export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
+  const [d, ...fotos] = await Promise.all([novoDocumento(r), ...r.imagens.map((i) => carregarFoto(i.url))]);
+  const { doc } = d;
+
+  d.texto(r.localData, ML + 21, { espaco: ESPACO_LINHA * 1.6 - ALTURA_LINHA });
   for (const linha of [r.destinatario, `Protocolo: ${r.protocolo}`, ...r.linhas.map((l) => `${l.rotulo}: ${l.valor}`), r.quadraLote, `Horas: ${r.horas}`]) {
-    texto(linha, ML + RECUO, { espaco: ESPACO_LINHA - ALTURA_LINHA });
+    d.texto(linha, ML + RECUO, { espaco: ESPACO_LINHA - ALTURA_LINHA });
   }
-  if (r.descricao) texto(`Descrição: ${r.descricao}`, ML, { justificar: true, espaco: 3 });
-  texto(r.paragrafo, ML, { justificar: true, recuoPrimeira: RECUO, entrelinha: 7.4, espaco: 2 });
+  if (r.descricao) d.texto(`Descrição: ${r.descricao}`, ML, { justificar: true, espaco: 3 });
+  d.texto(r.paragrafo, ML, { justificar: true, recuoPrimeira: RECUO, entrelinha: 7.4, espaco: 2 });
 
   for (const f of r.fundamentacoes) {
-    texto(`${f.titulo}: ${f.citacao}`, ML, { tamanho: 10.5, estilo: "bolditalic", espaco: 0.5 });
-    texto(`“${f.texto}”`, ML, { tamanho: 10.5, justificar: true, espaco: 2 });
+    d.texto(`${f.titulo}: ${f.citacao}`, ML, { tamanho: 10.5, estilo: "bolditalic", espaco: 0.5 });
+    d.texto(`“${f.texto}”`, ML, { tamanho: 10.5, justificar: true, espaco: 2 });
   }
-  if (r.observacoes) texto(`Observações: ${r.observacoes}`, ML, { tamanho: 11, justificar: true, espaco: 2 });
+  if (r.observacoes) d.texto(`Observações: ${r.observacoes}`, ML, { tamanho: 11, justificar: true, espaco: 2 });
 
   // Foto reduzida abaixo do texto (primeira imagem)
   const primeiraFoto = fotos[0];
   if (primeiraFoto) {
     const { l, a } = caber(r.imagens[0].largura, r.imagens[0].altura, 99, 62);
-    if (y + 4 + a > LIMITE - 20) y = novaPagina();
-    doc.addImage(primeiraFoto, "JPEG", ML + 3.6, y + 2, l, a);
-    y += a + 16;
+    if (d.y + 4 + a > LIMITE - 20) d.novaPagina();
+    doc.addImage(primeiraFoto, "JPEG", ML + 3.6, d.y + 2, l, a);
+    d.y += a + 16;
   } else {
-    y += 14;
+    d.y += 14;
   }
 
   // Assinatura (sublinhada, alinhada às linhas do corpo)
-  if (y + 14 > LIMITE) y = novaPagina();
-  const assinatura = [r.responsavelNome || "Responsável pelo registro", r.responsavelCargo].filter(Boolean) as string[];
-  doc.setFont("times", "italic");
-  doc.setFontSize(12);
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.25);
-  for (const linha of assinatura) {
-    doc.text(linha, ML + RECUO, y);
-    doc.line(ML + RECUO, y + 0.8, ML + RECUO + doc.getTextWidth(linha), y + 0.8);
-    y += ESPACO_LINHA;
-  }
+  d.assinatura([r.responsavelNome || "Responsável pelo registro", r.responsavelCargo].filter(Boolean) as string[], ML + RECUO);
 
   // Uma página por foto, ampliada
   fotos.forEach((foto, i) => {
     if (!foto) return;
-    novaPagina();
+    d.novaPagina();
     const { l, a } = caber(r.imagens[i].largura, r.imagens[i].altura, 170, 205);
     doc.addImage(foto, "JPEG", (210 - l) / 2, 40, l, a);
     if (fotos.length > 1) {
@@ -227,11 +263,29 @@ export async function gerarPdf(r: ConteudoRelatorio, nomeArquivo: string) {
     }
   });
 
-  const paginas = doc.getNumberOfPages();
-  for (let p = 1; p <= paginas; p++) {
-    doc.setPage(p);
-    rodape();
-  }
+  d.salvar(nomeArquivo);
+}
 
-  doc.save(nomeArquivo);
+/** Gera a carta de notificação ou multa (mesma identidade visual do relatório) e inicia o download. */
+export async function gerarPdfCarta(c: ConteudoCarta, nomeArquivo: string) {
+  const d = await novoDocumento(c);
+  d.texto(c.localData, ML + 21, { espaco: 6 });
+  d.texto(c.titulo, ML, { tamanho: 14, estilo: "bold", alinhar: "center", espaco: 4 });
+  for (const linha of c.destinatario) d.texto(linha, ML, { espaco: 0.5 });
+  d.y += 2;
+  d.texto(c.referencia, ML, { tamanho: 11, estilo: "bolditalic", espaco: 4 });
+  for (const p of c.paragrafos) d.texto(p, ML, { justificar: true, recuoPrimeira: RECUO, entrelinha: 6.6, espaco: 3 });
+  d.y += 6;
+  d.assinatura(c.assinatura, ML + RECUO);
+  if (c.dispositivos.length) {
+    d.y += 2;
+    d.texto("Dispositivos citados:", ML, { tamanho: 10, estilo: "bolditalic", espaco: 0.5 });
+    for (const x of c.dispositivos) {
+      d.texto(`${x.citacao}: “${x.texto}”`, ML, { tamanho: 9.5, justificar: true, espaco: 1.2 });
+    }
+  }
+  if (d.y + 14 > LIMITE) d.novaPagina();
+  d.y += 6;
+  d.texto(c.recibo, ML, { tamanho: 10, estilo: "normal" });
+  d.salvar(nomeArquivo);
 }

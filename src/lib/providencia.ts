@@ -81,6 +81,11 @@ function normalizar(s: string | undefined) {
   return (s ?? "").trim().replace(/^0+/, "").toLowerCase();
 }
 
+/** Primeiro dia considerado para reincidência (12 meses antes da data). */
+export function inicioReincidencia(data: string): string {
+  return subtrairMeses(data, PRAZO_REINCIDENCIA_MESES);
+}
+
 /**
  * Ocorrências anteriores do mesmo imóvel (quadra/lote) com a mesma norma
  * principal nos 12 meses anteriores (RI XV, item 3). Ignora as arquivadas e canceladas.
@@ -88,7 +93,7 @@ function normalizar(s: string | undefined) {
 export function buscarReincidencias(alvo: Ocorrencia, todas: Ocorrencia[]): Ocorrencia[] {
   const norma = alvo.fundamentacaoPrincipal?.normaId;
   if (!norma || !normalizar(alvo.quadra) || !normalizar(alvo.lote)) return [];
-  const inicio = subtrairMeses(alvo.data, PRAZO_REINCIDENCIA_MESES);
+  const inicio = inicioReincidencia(alvo.data);
   return todas
     .filter(
       (o) =>

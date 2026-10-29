@@ -125,7 +125,13 @@ test("ocorrências: matriz de criação, leitura (IDOR), edição e exclusão po
   assert.equal((await lider1.req("GET", `/api/ocorrencias/${o.id}`)).s, 200);
   assert.equal((await lider2.req("GET", `/api/ocorrencias/${o.id}`)).s, 404, "outro líder não acessa por id");
   assert.equal((await porteiro.req("GET", `/api/ocorrencias/${o.id}`)).s, 404);
-  assert.ok(!((await lider2.req("GET", "/api/ocorrencias")).j as { id: string }[]).some((x) => x.id === o.id), "nem na listagem");
+  assert.ok(!((await lider2.req("GET", "/api/ocorrencias")).j.itens as { id: string }[]).some((x) => x.id === o.id), "nem na listagem");
+  // Nem forçando filtros na URL (registradoPor é sempre definido pelo servidor).
+  const forcado = await lider2.req("GET", `/api/ocorrencias?registradoPor=${o.registradoPor.id}&busca=${encodeURIComponent(o.protocolo)}`);
+  assert.equal(forcado.j.total, 0);
+  const deLia = await lider1.req("GET", `/api/ocorrencias?busca=${encodeURIComponent(o.protocolo)}&porPagina=1000`);
+  assert.equal(deLia.j.total, 1);
+  assert.equal(deLia.j.porPagina, 100, "tamanho de página limitado");
   assert.equal((await ger.req("GET", `/api/ocorrencias/${o.id}`)).s, 200);
   assert.equal((await adm.req("GET", "/api/ocorrencias/00000000-0000-4000-8000-000000000000")).s, 404);
 
@@ -194,7 +200,7 @@ test("base normativa, configurações, exportação e demonstração: somente pe
   assert.equal((await ger.req("GET", "/api/ocorrencias/exportar")).s, 200);
   // Nem o Admin Geral restaura a demonstração em produção.
   assert.equal((await admin.req("POST", "/api/demonstracao", { confirmacao: "APAGAR TODAS AS OCORRENCIAS" })).s, 403);
-  assert.ok(((await admin.req("GET", "/api/ocorrencias")).j as unknown[]).length >= 2, "nenhum dado apagado");
+  assert.ok((await admin.req("GET", "/api/ocorrencias")).j.total >= 2, "nenhum dado apagado");
   const neg = (await admin.req("GET", "/api/auditoria?entidade=sistema")).j as { acao: string; resultado: string }[];
   assert.ok(neg.some((e) => e.acao === "DEMONSTRACAO_RESTAURADA" && e.resultado === "NEGADO"), "tentativa auditada");
 });

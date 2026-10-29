@@ -1,4 +1,6 @@
 import type { ResultadoAnalise } from "./analysis/engine";
+import type { Pagina } from "./consulta";
+import type { ConteudoCarta } from "./carta";
 import type { AnexoInfo, Configuracoes, Norma, Ocorrencia, Perfil, Usuario } from "./types";
 
 /** O registro mudou desde que foi carregado (HTTP 409): recarregar antes de salvar de novo. */
@@ -33,13 +35,17 @@ export const api = {
   excluirNorma: (id: string) => req(`/api/normas/${encodeURIComponent(id)}`, { method: "DELETE" }),
   restaurarNormas: () => req("/api/normas/restaurar", { method: "POST" }),
 
-  ocorrencias: () => req<Ocorrencia[]>("/api/ocorrencias"),
+  ocorrencias: (consulta: Record<string, string | number | boolean | undefined> = {}) => {
+    const q = new URLSearchParams(Object.entries(consulta).filter(([, v]) => v !== undefined && v !== "" && v !== false).map(([k, v]) => [k, v === true ? "1" : String(v)]));
+    return req<Pagina<Ocorrencia>>(`/api/ocorrencias${q.size ? `?${q}` : ""}`);
+  },
   ocorrencia: (id: string) => req<Ocorrencia>(`/api/ocorrencias/${id}`),
   criarOcorrencia: (o: Partial<Ocorrencia>) => req<Ocorrencia>("/api/ocorrencias", { method: "POST", body: json(o) }),
   atualizarOcorrencia: (id: string, o: Partial<Ocorrencia>) => req<Ocorrencia>(`/api/ocorrencias/${id}`, { method: "PUT", body: json(o) }),
   excluirOcorrencia: (id: string) => req(`/api/ocorrencias/${id}`, { method: "DELETE" }),
   registrarProvidencia: (id: string, p: Record<string, unknown>) =>
     req<Ocorrencia>(`/api/ocorrencias/${id}/providencia`, { method: "PUT", body: json(p) }),
+  carta: (id: string) => req<ConteudoCarta>(`/api/ocorrencias/${id}/carta`, { method: "POST" }),
   removerProvidencia: (id: string, versao: number) =>
     req<Ocorrencia>(`/api/ocorrencias/${id}/providencia`, { method: "DELETE", body: json({ versao }) }),
 

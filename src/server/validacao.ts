@@ -31,6 +31,24 @@ export class ErroTamanho extends Error {}
 /** O registro mudou desde que foi lido, ou viola uma regra de unicidade (409). */
 export class ErroConflito extends Error {}
 
+export const PRAZO_ENVIO_OFFLINE_DIAS = 7;
+
+/**
+ * Instante informado para relatórios preenchidos sem conexão (fila offline).
+ * Aceito apenas até 7 dias antes e no máximo 5 minutos à frente do relógio do
+ * servidor; fora disso o envio é recusado (o relatório continua no aparelho).
+ */
+export function instanteOffline(v: unknown, agora = Date.now()): string | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const t = typeof v === "string" ? Date.parse(v) : NaN;
+  if (!Number.isFinite(t)) throw new ErroValidacao("Horário do registro offline inválido.");
+  if (t > agora + 5 * 60_000) throw new ErroValidacao("O horário do aparelho está adiantado. Acerte a data e a hora do celular e tente de novo.");
+  if (t < agora - PRAZO_ENVIO_OFFLINE_DIAS * 86_400_000) {
+    throw new ErroValidacao(`Relatório guardado no aparelho há mais de ${PRAZO_ENVIO_OFFLINE_DIAS} dias: registre-o novamente e informe a data correta à Administração.`);
+  }
+  return new Date(t).toISOString();
+}
+
 /** Versão do registro enviada pela tela (controle de concorrência). */
 export function versaoInformada(body: Record<string, unknown> | null): number {
   const v = Number(body?.versao);

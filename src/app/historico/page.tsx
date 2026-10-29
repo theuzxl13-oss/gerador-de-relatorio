@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api-cliente";
-import { normalizar } from "@/lib/analysis/texto";
+import type { Pagina } from "@/lib/consulta";
 import { gerarPdf } from "@/lib/pdf";
 import { dataCurta, montarRelatorio } from "@/lib/relatorio";
 import { DOCUMENTO_NOME, STATUS_LABEL, type Configuracoes, type DocumentoTipo, type Ocorrencia, type StatusOcorrencia } from "@/lib/types";
@@ -26,8 +26,7 @@ interface Filtros {
 
 const VAZIO: Filtros = { busca: "", nome: "", quadra: "", lote: "", ocorrencia: "", de: "", ate: "", dispositivo: "", documento: "", status: "" };
 
-const contem = (valor: string | undefined, termo: string) => !termo || normalizar(valor ?? "").includes(normalizar(termo));
-const mesmoNumero = (a: string, b: string) => !b || a.replace(/^0+/, "") === b.trim().replace(/^0+/, "");
+const POR_PAGINA = 25;
 
 function fundamentacaoCurta(o: Ocorrencia) {
   if (!o.fundamentacaoPrincipal) return "—";
@@ -39,40 +38,47 @@ export default function Historico() {
   const podeExcluir = usePode("excluir");
   const podeRegistrar = usePode("registrar");
   const verTodas = usePode("verTodas");
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[] | null>(null);
+  const [pagina, setPagina] = useState<Pagina<Ocorrencia> | null>(null);
+  const [numPagina, setNumPagina] = useState(1);
   const [cfg, setCfg] = useState<Configuracoes | null>(null);
   const [f, setF] = useState<Filtros>(VAZIO);
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(true);
   const [gerandoPdf, setGerandoPdf] = useState<string | null>(null);
+  const [recarregar, setRecarregar] = useState(0);
 
   useEffect(() => {
-    Promise.all([api.ocorrencias(), api.configuracoes()])
-      .then(([o, c]) => {
-        setOcorrencias(o);
-        setCfg(c);
-      })
-      .catch((e) => setErro(e.message));
+    api.configuracoes().then(setCfg).catch((e) => setErro(e.message));
   }, []);
 
-  const set = <K extends keyof Filtros>(k: K, v: Filtros[K]) => setF((x) => ({ ...x, [k]: v }));
+  // Filtros e paginação são aplicados no servidor (espera a pessoa parar de digitar).
+  useEffect(() => {
+    let cancelado = false;
+    setCarregando(true);
+    const t = setTimeout(() => {
+      api
+        .ocorrencias({ ...f, pagina: numPagina, porPagina: POR_PAGINA })
+        .then((r) => {
+          if (cancelado) return;
+          setPagina(r);
+          setErro("");
+        })
+        .catch((e) => !cancelado && setErro(e.message))
+        .finally(() => !cancelado && setCarregando(false));
+    }, 300);
+    return () => {
+      cancelado = true;
+      clearTimeout(t);
+    };
+  }, [f, numPagina, recarregar]);
 
-  const filtradas = useMemo(() => {
-    if (!ocorrencias) return [];
-    return ocorrencias.filter((o) => {
-      const fund = [o.fundamentacaoPrincipal, o.fundamentacaoComplementar].filter(Boolean);
-      if (f.busca && !contem([o.protocolo, o.nome, o.ocorrencia, o.descricao, `q${o.quadra} l${o.lote}`, fundamentacaoCurta(o), o.registradoPor?.nome].join(" "), f.busca)) return false;
-      if (!contem(o.nome, f.nome) || !contem(o.ocorrencia, f.ocorrencia)) return false;
-      if (!mesmoNumero(o.quadra, f.quadra) || !mesmoNumero(o.lote, f.lote)) return false;
-      if (f.de && o.data < f.de) return false;
-      if (f.ate && o.data > f.ate) return false;
-      if (f.status && o.status !== f.status) return false;
-      if (f.documento === "SEM" && fund.length) return false;
-      if (f.documento && f.documento !== "SEM" && !fund.some((x) => x!.documento === f.documento)) return false;
-      if (f.dispositivo && !fund.some((x) => contem(`${x!.citacao} ${x!.citacaoCurta}`, f.dispositivo))) return false;
-      return true;
-    });
-  }, [ocorrencias, f]);
+  const set = <K extends keyof Filtros>(k: K, v: Filtros[K]) => {
+    setNumPagina(1);
+    setF((x) => ({ ...x, [k]: v }));
+  };
+  const filtradas = pagina?.itens ?? [];
+  const totalPaginas = pagina ? Math.max(1, Math.ceil(pagina.total / pagina.porPagina)) : 1;
 
   const filtrosAtivos = Object.entries(f).filter(([k, v]) => k !== "busca" && v).length;
 
@@ -80,7 +86,7 @@ export default function Historico() {
     if (!confirm(`Excluir definitivamente a ocorrência ${o.protocolo ? `${o.protocolo} ` : ""}(${o.ocorrencia} – ${o.nome})?`)) return;
     try {
       await api.excluirOcorrencia(o.id);
-      setOcorrencias((l) => l!.filter((x) => x.id !== o.id));
+      setRecarregar((n) => n + 1);
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -117,7 +123,7 @@ export default function Historico() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Histórico de ocorrências</h1>
           <p className="text-sm text-gray-600">
-            {ocorrencias ? `${filtradas.length} de ${ocorrencias.length} registro(s)` : "Carregando registros..."}
+            {pagina ? `${pagina.total} registro(s)${verTodas ? "" : " gerados por você"}` : "Carregando registros..."}
           </p>
         </div>
         <BotaoLink href="/ocorrencias/nova">+ Nova ocorrência</BotaoLink>
@@ -130,7 +136,7 @@ export default function Historico() {
             Filtros{filtrosAtivos ? ` (${filtrosAtivos})` : ""}
           </Botao>
           {(filtrosAtivos > 0 || f.busca) && (
-            <Botao variante="fantasma" onClick={() => setF(VAZIO)} className="shrink-0">Limpar</Botao>
+            <Botao variante="fantasma" onClick={() => { setNumPagina(1); setF(VAZIO); }} className="shrink-0">Limpar</Botao>
           )}
         </div>
         {mostrarFiltros && (
@@ -165,9 +171,9 @@ export default function Historico() {
       </div>
 
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
-      {!ocorrencias && !erro && <Carregando />}
+      {!pagina && !erro && <Carregando />}
 
-      {ocorrencias && filtradas.length === 0 && (
+      {pagina && !carregando && filtradas.length === 0 && (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500">Nenhuma ocorrência encontrada.</div>
       )}
 
@@ -229,6 +235,14 @@ export default function Historico() {
               </li>
             ))}
           </ul>
+          <nav className="flex items-center justify-between gap-3 text-sm" aria-label="Páginas">
+            <Botao variante="secundario" disabled={numPagina <= 1 || carregando} onClick={() => setNumPagina((n) => n - 1)}>← Anterior</Botao>
+            <span className="text-gray-600" aria-live="polite">
+              Página {pagina?.pagina ?? numPagina} de {totalPaginas}
+              {carregando ? " · atualizando..." : ""}
+            </span>
+            <Botao variante="secundario" disabled={numPagina >= totalPaginas || carregando} onClick={() => setNumPagina((n) => n + 1)}>Próxima →</Botao>
+          </nav>
         </>
       )}
     </div>

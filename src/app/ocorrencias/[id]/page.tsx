@@ -3,7 +3,7 @@ import { repositorio } from "@/server/db";
 import { exigirPagina } from "@/server/pagina";
 import { VisualizarRelatorio } from "@/components/VisualizarRelatorio";
 import { pode, podeVerOcorrencia } from "@/lib/permissoes";
-import { buscarReincidencias } from "@/lib/providencia";
+import { buscarReincidencias, inicioReincidencia } from "@/lib/providencia";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export default async function PaginaRelatorio({ params, searchParams }: { params
   if (!o || !podeVerOcorrencia(usuario, o)) notFound();
   const acompanha = pode(usuario.perfil, "painel");
   const reincidencias = acompanha
-    ? buscarReincidencias(o, await repo.listarOcorrencias()).map((r) => ({
+    ? buscarReincidencias(o, (await repo.buscarOcorrencias({ quadra: o.quadra, lote: o.lote, de: inicioReincidencia(o.data) }, 1, 100)).itens).map((r) => ({
         id: r.id,
         protocolo: r.protocolo,
         data: r.data,

@@ -5,6 +5,7 @@ import { NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
 import { CONFIGURACOES_PADRAO, type AnexoInfo, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
 import { normalizarPerfil } from "@/lib/permissoes";
+import { emAcompanhamento, estatisticas, ordenar, paginar, resumoProvidencias, type FiltroOcorrencias } from "@/lib/consulta";
 import { ErroConflito, ErroValidacao } from "./validacao";
 import type { Alteracao, EventoAuditoriaGravado, NovoAnexo, NovaOcorrencia, RegistroAuditoria, Repositorio } from "./repositorio";
 
@@ -226,9 +227,32 @@ export class RepositorioArquivo implements Repositorio {
 
   listarOcorrencias() {
     return this.exclusivo(
-      (db) => [...db.ocorrencias].map((o) => ({ ...o, versao: o.versao ?? 1 })).sort((a, b) => b.data.localeCompare(a.data) || b.criadoEm.localeCompare(a.criadoEm)),
+      (db) => [...db.ocorrencias].map((o) => ({ ...o, versao: o.versao ?? 1 })).sort(ordenar),
       false,
     );
+  }
+
+  buscarOcorrencias(filtro: FiltroOcorrencias, pagina: number, porPagina: number, opcoes: { crescente?: boolean } = {}) {
+    return this.exclusivo((db) => paginar(db.ocorrencias.map((o) => ({ ...o, versao: o.versao ?? 1 })), filtro, pagina, porPagina, opcoes.crescente), false);
+  }
+
+  estatisticas(filtro: Pick<FiltroOcorrencias, "registradoPor">, hoje: string) {
+    return this.exclusivo((db) => estatisticas(db.ocorrencias.filter((o) => !filtro.registradoPor || o.registradoPor?.id === filtro.registradoPor), hoje), false);
+  }
+
+  resumoProvidencias(hoje: string) {
+    return this.exclusivo((db) => resumoProvidencias(db.ocorrencias, hoje), false);
+  }
+
+  listarEmAcompanhamento(hoje: string) {
+    return this.exclusivo((db) => db.ocorrencias.filter((o) => emAcompanhamento(o, hoje)).map((o) => ({ ...o, versao: o.versao ?? 1 })), false);
+  }
+
+  obterPorIdCliente(usuarioId: string, idCliente: string) {
+    return this.exclusivo((db) => {
+      const o = db.ocorrencias.find((x) => x.idCliente === idCliente && x.registradoPor?.id === usuarioId);
+      return o ? { ...o, versao: o.versao ?? 1 } : null;
+    }, false);
   }
 
   obterOcorrencia(id: string) {
