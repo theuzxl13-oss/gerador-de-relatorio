@@ -7,7 +7,7 @@
  * alguma norma não estiver cadastrada ou ativa, a frase que a citaria é omitida e
  * um aviso é devolvido para a Administração conferir antes de imprimir.
  */
-import { citacaoCompleta } from "./citacao";
+import { citacaoComArtigo, citacaoCompleta } from "./citacao";
 import { formatarReais } from "./providencia";
 import { dataCurta, dataPorExtenso, generoDoTratamento, linhaLocalData } from "./relatorio";
 import { PRAZO_RECURSO_DIAS, type Configuracoes, type Norma, type Ocorrencia } from "./types";
@@ -77,14 +77,14 @@ export function montarCarta(o: Ocorrencia, cfg: Configuracoes, normas: Norma[], 
 
   const falta = [o.fundamentacaoPrincipal, o.fundamentacaoComplementar].filter((f) => !!f);
   if (falta.some((f) => f!.revisaoPendente)) avisos.push("A norma do relatório estava marcada para revisão manual quando foi vinculada: confira o texto no documento original.");
-  const citacoesFalta = falta.map((f) => citacaoCompleta(f!, termo)).join(" e no ");
+  const citacoesFalta = falta.map((f) => citacaoComArtigo(f!, "no", termo)).join(" e ");
   const quando = `${dataPorExtenso(o.data)}, às ${o.horario}`;
   const imovel = `Quadra ${o.quadra.trim()}, Lote ${o.lote.trim()}`;
 
   const paragrafos: string[] = [
     `Comunicamos que, conforme relatório de ocorrência${o.protocolo ? ` nº ${o.protocolo}` : ""} registrado em ${quando}, ` +
       `foi constatada a seguinte ocorrência: ${o.ocorrencia.trim().toUpperCase()}, em ${imovel}. ` +
-      `O fato caracteriza descumprimento do disposto no ${citacoesFalta}.`,
+      `O fato caracteriza descumprimento do disposto ${citacoesFalta}.`,
   ];
   for (const f of falta) dispositivos.push({ citacao: citacaoCompleta(f!, termo), texto: f!.texto });
 

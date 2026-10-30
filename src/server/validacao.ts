@@ -257,18 +257,20 @@ export function validarNorma(body: unknown): Norma {
   if (!body || typeof body !== "object") throw new ErroValidacao("Dados inválidos.");
   const b = body as Record<string, unknown>;
   const documento = b.documento as DocumentoTipo;
-  if (documento !== "ESTATUTO" && documento !== "REGULAMENTO") throw new ErroValidacao("Documento inválido.");
+  if (documento !== "ESTATUTO" && documento !== "REGULAMENTO" && documento !== "ATA") throw new ErroValidacao("Documento inválido.");
+  const estatuto = documento === "ESTATUTO";
+  const ata = documento === "ATA";
 
   const n: Norma = {
     id: texto(b.id, "Identificador", true, 60)!,
     documento,
-    secaoNumero: texto(b.secaoNumero, documento === "ESTATUTO" ? "Capítulo" : "Tópico", true, 10)!,
-    secaoTitulo: texto(b.secaoTitulo, "Título da seção", true, 200)!,
-    artigo: documento === "ESTATUTO" ? texto(b.artigo, "Artigo", true, 10) : undefined,
-    alinea: documento === "ESTATUTO" ? texto(b.alinea, "Alínea", false, 5) : undefined,
-    paragrafo: documento === "ESTATUTO" ? texto(b.paragrafo, "Parágrafo", false, 40) : undefined,
-    item: documento === "REGULAMENTO" ? texto(b.item, "Item", false, 10) : undefined,
-    itemTitulo: documento === "REGULAMENTO" ? texto(b.itemTitulo, "Título do item", false, 120) : undefined,
+    secaoNumero: texto(b.secaoNumero, estatuto ? "Capítulo" : ata ? "Data da assembleia" : "Tópico", true, 10)!,
+    secaoTitulo: texto(b.secaoTitulo, ata ? "Tipo de assembleia" : "Título da seção", true, 200)!,
+    artigo: estatuto ? texto(b.artigo, "Artigo", true, 10) : undefined,
+    alinea: estatuto ? texto(b.alinea, "Alínea", false, 5) : undefined,
+    paragrafo: estatuto ? texto(b.paragrafo, "Parágrafo", false, 40) : undefined,
+    item: !estatuto ? texto(b.item, ata ? "Item da Ordem do Dia" : "Item", false, 10) : undefined,
+    itemTitulo: !estatuto ? texto(b.itemTitulo, ata ? "Assunto" : "Título do item", false, 200) : undefined,
     subitem: documento === "REGULAMENTO" ? texto(b.subitem, "Subitem", false, 15) : undefined,
     texto: texto(b.texto, "Texto da regra", true, 10000)!,
     palavrasChave: lista(b.palavrasChave),
@@ -280,6 +282,7 @@ export function validarNorma(body: unknown): Norma {
     ativo: b.ativo !== false,
   };
   if (n.subitem && !n.item) throw new ErroValidacao("Informe o item ao qual o subitem pertence.");
+  if (ata && !/^\d{2}\/\d{2}\/\d{4}$/.test(n.secaoNumero)) throw new ErroValidacao("Informe a data da assembleia no formato DD/MM/AAAA.");
   return n;
 }
 

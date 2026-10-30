@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-import { NORMAS_ORIGINAIS } from "@/data/normas";
+import { NORMAS_ATAS, NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
 import { normalizarPerfil } from "@/lib/permissoes";
 import { CONFIGURACOES_PADRAO, type AnexoInfo, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
@@ -16,7 +16,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * transação com trava (pg_advisory_xact_lock), e fica registrada em schema_migracoes.
  * Todas são aditivas (não apagam dados). O desfazer de cada uma está em docs/MIGRACOES.md.
  */
-export const MIGRACOES: { versao: number; descricao: string; sql: string }[] = [
+export const MIGRACOES: { versao: number; descricao: string; sql: string; dados?: (c: PoolClient) => Promise<void> }[] = [
   {
     versao: 1,
     descricao: "Esquema base (normas, ocorrências, anexos, usuários, configurações)",
@@ -106,6 +106,22 @@ create index if not exists ocorrencias_status_idx on ocorrencias ((dados->>'stat
 create index if not exists ocorrencias_ordem_idx on ocorrencias (data desc, (dados->>'criadoEm') collate "C" desc, id desc);
 create unique index if not exists ocorrencias_id_cliente_unico on ocorrencias ((dados->'registradoPor'->>'id'), (dados->>'idCliente'))
   where dados->>'idCliente' is not null;`,
+  },
+  {
+    versao: 4,
+    descricao: "Atas de Assembleia na Base Normativa (AGE de 26/06/2022: proibição da locação não residencial tipo Airbnb)",
+    sql: `
+alter table normas drop constraint if exists normas_documento_check;
+alter table normas add constraint normas_documento_check check (documento in ('ESTATUTO', 'REGULAMENTO', 'ATA'));`,
+    // Banco já em uso: acrescenta só as deliberações (sem tocar nas normas existentes ou editadas).
+    // Banco novo (sem normas) recebe tudo pela carga inicial.
+    dados: async (c) => {
+      const { rows } = await c.query("select count(*)::int as n from normas");
+      if (rows[0].n === 0) return;
+      for (const n of NORMAS_ATAS) {
+        await c.query("insert into normas (id, documento, dados) values ($1, $2, $3) on conflict (id) do nothing", [n.id, n.documento, n]);
+      }
+    },
   },
 ];
 
@@ -223,6 +239,7 @@ export class RepositorioPostgres implements Repositorio {
       for (const m of MIGRACOES) {
         if (aplicadas.has(m.versao)) continue;
         await c.query(m.sql);
+        if (m.dados) await m.dados(c);
         await c.query("insert into schema_migracoes (versao, descricao) values ($1, $2)", [m.versao, m.descricao]);
         console.info(`[banco] migração ${m.versao} aplicada: ${m.descricao}`);
       }

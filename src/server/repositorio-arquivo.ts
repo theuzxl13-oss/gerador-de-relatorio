@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { NORMAS_ORIGINAIS } from "@/data/normas";
+import { NORMAS_ATAS, NORMAS_ORIGINAIS } from "@/data/normas";
 import { ocorrenciasDemonstrativas } from "@/data/demonstracao";
 import { CONFIGURACOES_PADRAO, type AnexoInfo, type Configuracoes, type Norma, type Ocorrencia, type Usuario, type UsuarioComSenha } from "@/lib/types";
 import { normalizarPerfil } from "@/lib/permissoes";
@@ -28,6 +28,8 @@ interface Banco {
   anexos?: AnexoArquivo[];
   usuarios?: UsuarioComSenha[];
   auditoria?: EventoAuditoriaGravado[];
+  /** Migrações de dados já aplicadas a este arquivo. */
+  migracoes?: number[];
 }
 
 function comPerfil(u: UsuarioComSenha): UsuarioComSenha {
@@ -73,10 +75,17 @@ export class RepositorioArquivo implements Repositorio {
 
   private async ler(): Promise<Banco> {
     try {
-      return JSON.parse(await fs.readFile(this.arquivo, "utf8")) as Banco;
+      const db = JSON.parse(await fs.readFile(this.arquivo, "utf8")) as Banco;
+      // Mesma regra da migração 4 do PostgreSQL: acrescenta as atas uma única vez.
+      if (!(db.migracoes ?? []).includes(4)) {
+        for (const n of NORMAS_ATAS) if (!db.normas.some((x) => x.id === n.id)) db.normas.push(structuredClone(n));
+        db.migracoes = [...(db.migracoes ?? []), 4];
+        await this.gravar(db);
+      }
+      return db;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-      const db: Banco = { normas: structuredClone(NORMAS_ORIGINAIS), ocorrencias: [], sequencias: {}, configuracoes: CONFIGURACOES_PADRAO };
+      const db: Banco = { normas: structuredClone(NORMAS_ORIGINAIS), ocorrencias: [], sequencias: {}, configuracoes: CONFIGURACOES_PADRAO, migracoes: [4] };
       if (process.env.SEED_DEMO !== "false") this.semear(db);
       await this.gravar(db);
       return db;

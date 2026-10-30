@@ -6,7 +6,7 @@ import { pesquisarNormas } from "@/lib/analysis/engine";
 import { CATEGORIAS } from "@/lib/analysis/categorias";
 import { citacaoCompleta, rotuloDispositivo } from "@/lib/citacao";
 import { compararNormas } from "@/lib/ordenacao";
-import { DOCUMENTO_NOME, type DocumentoTipo, type Norma } from "@/lib/types";
+import { DOCUMENTO_NOME, DOCUMENTOS, type DocumentoTipo, type Norma } from "@/lib/types";
 import { INTRODUCAO_DOCUMENTO, SECOES, caputSecao } from "@/data/normas";
 import { usePode } from "@/components/UsuarioContexto";
 import { AreaTexto, Aviso, Botao, Campo, Carregando, Entrada, Modal, Selecao } from "@/components/ui";
@@ -25,7 +25,9 @@ function gerarId(n: Norma): string {
   const partes =
     n.documento === "ESTATUTO"
       ? ["ES", n.artigo, n.alinea, n.paragrafo ? PARAGRAFO_ID[n.paragrafo] : ""]
-      : ["RI", n.secaoNumero, n.subitem || n.item];
+      : n.documento === "ATA"
+        ? ["ATA", n.secaoNumero.split("/").reverse().join("-"), n.item]
+        : ["RI", n.secaoNumero, n.subitem || n.item];
   return partes.filter(Boolean).join("-");
 }
 
@@ -70,6 +72,14 @@ export default function BaseNormativa() {
 
   const grupos = useMemo(() => {
     if (busca.trim()) return [{ numero: "", titulo: "Resultados da pesquisa", normas: visiveis }];
+    if (documento === "ATA") {
+      // Cada ata (data da assembleia) é um grupo, inclusive as cadastradas depois pela tela.
+      const datas = [...new Set(visiveis.map((n) => n.secaoNumero))];
+      return datas.map((d) => {
+        const doGrupo = visiveis.filter((n) => n.secaoNumero === d);
+        return { numero: d, titulo: doGrupo[0].secaoTitulo, caput: undefined, normas: doGrupo };
+      });
+    }
     return SECOES[documento]
       .map((s) => ({ ...s, normas: visiveis.filter((n) => n.secaoNumero === s.numero) }))
       .concat([{ numero: "?", titulo: "Outras seções", normas: visiveis.filter((n) => !SECOES[documento].some((s) => s.numero === n.secaoNumero)) }])
@@ -123,7 +133,7 @@ export default function BaseNormativa() {
       {mensagem && <Aviso tipo="sucesso">{mensagem}</Aviso>}
 
       <div className="flex gap-1 rounded-xl bg-gray-200/70 p-1">
-        {(["REGULAMENTO", "ESTATUTO"] as DocumentoTipo[]).map((d) => (
+        {DOCUMENTOS.map((d) => (
           <button
             key={d}
             type="button"
@@ -169,7 +179,7 @@ export default function BaseNormativa() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-gray-900">
                       {rotuloDispositivo(n)}
-                      {n.itemTitulo && n.documento === "REGULAMENTO" ? ` (${n.itemTitulo})` : ""}
+                      {n.itemTitulo && n.documento !== "ESTATUTO" ? ` (${n.itemTitulo})` : ""}
                     </span>
                     {busca && <span className="text-xs text-gray-500">{citacaoCompleta(n)}</span>}
                     {n.revisaoManual && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">Revisar texto</span>}
@@ -227,6 +237,7 @@ function EditorNorma({ inicial, nova, idsExistentes, aoFechar, aoSalvar }: { ini
   const set = <K extends keyof Norma>(k: K, v: Norma[K]) => setN((x) => ({ ...x, [k]: v }));
   const secoes = SECOES[n.documento];
   const estatuto = n.documento === "ESTATUTO";
+  const ata = n.documento === "ATA";
 
   async function salvar() {
     setErro("");
@@ -256,10 +267,27 @@ function EditorNorma({ inicial, nova, idsExistentes, aoFechar, aoSalvar }: { ini
       <div className="grid gap-4 sm:grid-cols-6">
         <Campo rotulo="Documento" className="sm:col-span-3">
           <Selecao value={n.documento} disabled={!nova} onChange={(e) => setN({ ...novaNorma(e.target.value as DocumentoTipo), texto: n.texto })}>
-            <option value="REGULAMENTO">{DOCUMENTO_NOME.REGULAMENTO}</option>
-            <option value="ESTATUTO">{DOCUMENTO_NOME.ESTATUTO}</option>
+            {DOCUMENTOS.map((d) => (
+              <option key={d} value={d}>{DOCUMENTO_NOME[d]}</option>
+            ))}
           </Selecao>
         </Campo>
+        {ata ? (
+          <>
+            <Campo rotulo="Data da assembleia" obrigatorio className="sm:col-span-1" ajuda="DD/MM/AAAA">
+              <Entrada value={n.secaoNumero} disabled={!nova} onChange={(e) => set("secaoNumero", e.target.value)} placeholder="26/06/2022" maxLength={10} />
+            </Campo>
+            <Campo rotulo="Tipo de assembleia" obrigatorio className="sm:col-span-2">
+              <Selecao value={n.secaoTitulo} onChange={(e) => set("secaoTitulo", e.target.value)}>
+                <option value="">Selecione...</option>
+                <option value="ASSEMBLEIA GERAL EXTRAORDINÁRIA">Assembleia Geral Extraordinária</option>
+                <option value="ASSEMBLEIA GERAL ORDINÁRIA">Assembleia Geral Ordinária</option>
+              </Selecao>
+            </Campo>
+            <Campo rotulo="Item da Ordem do Dia" className="sm:col-span-2"><Entrada value={n.item ?? ""} disabled={!nova} onChange={(e) => set("item", e.target.value || undefined)} placeholder="1" /></Campo>
+            <Campo rotulo="Assunto (como na ata)" className="sm:col-span-4"><Entrada value={n.itemTitulo ?? ""} onChange={(e) => set("itemTitulo", e.target.value || undefined)} /></Campo>
+          </>
+        ) : (
         <Campo rotulo={estatuto ? "Capítulo" : "Tópico / seção"} obrigatorio className="sm:col-span-3">
           <Selecao
             value={n.secaoNumero}
@@ -274,7 +302,8 @@ function EditorNorma({ inicial, nova, idsExistentes, aoFechar, aoSalvar }: { ini
             ))}
           </Selecao>
         </Campo>
-        {estatuto ? (
+        )}
+        {ata ? null : estatuto ? (
           <>
             <Campo rotulo="Artigo" obrigatorio className="sm:col-span-2"><Entrada value={n.artigo ?? ""} disabled={!nova} onChange={(e) => set("artigo", e.target.value)} /></Campo>
             <Campo rotulo="Alínea" className="sm:col-span-2"><Entrada value={n.alinea ?? ""} disabled={!nova} onChange={(e) => set("alinea", e.target.value || undefined)} placeholder="a, b, c..." /></Campo>

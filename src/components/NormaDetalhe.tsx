@@ -20,8 +20,13 @@ export function NormaDetalhe({ norma, compacto = false }: { norma: Ref; compacto
     <div>
       <dl className="divide-y divide-gray-100">
         <Linha rotulo="Documento">{DOCUMENTO_NOME[norma.documento]}</Linha>
-        <Linha rotulo={norma.documento === "ESTATUTO" ? "Capítulo" : "Seção"}>{rotuloSecao(norma)}</Linha>
-        {norma.documento === "ESTATUTO" ? (
+        <Linha rotulo={norma.documento === "ESTATUTO" ? "Capítulo" : norma.documento === "ATA" ? "Ata" : "Seção"}>{rotuloSecao(norma)}</Linha>
+        {norma.documento === "ATA" ? (
+          <Linha rotulo="Ordem do Dia">
+            {norma.item ? `Item ${norma.item}` : "—"}
+            {norma.itemTitulo ? ` – ${norma.itemTitulo}` : ""}
+          </Linha>
+        ) : norma.documento === "ESTATUTO" ? (
           <>
             <Linha rotulo="Artigo">{norma.artigo}</Linha>
             {norma.alinea && <Linha rotulo="Alínea">{norma.alinea}</Linha>}

@@ -70,7 +70,7 @@ export function SeletorNorma({ aberto, aoFechar, normas, candidatos, titulo, aoS
           onChange={(e) => setConsulta(e.target.value)}
         />
         <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-          {(["", "REGULAMENTO", "ESTATUTO"] as const).map((d) => (
+          {(["", "REGULAMENTO", "ESTATUTO", "ATA"] as const).map((d) => (
             <button
               key={d}
               type="button"

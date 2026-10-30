@@ -15,9 +15,17 @@ type Referencia = Pick<
  *              Subitem 1.2.7 do tópico VII – DAS ÁREAS DE LAZER do Regulamento Interno
  *              tópico V – DA COLETA DO LIXO do Regulamento Interno (tópico sem itens)
  *
+ * Ata:        deliberação do item 1 da Ordem do Dia (Permissão ou Proibição da Locação
+ *              não residencial Tipo “Airbnb”) da Assembleia Geral Extraordinária de 26/06/2022
+ *
  * A numeração do Estatuto e a do Regulamento nunca são misturadas.
  */
 export function citacaoCompleta(n: Referencia, termoSecao: TermoSecao = "tópico"): string {
+  if (n.documento === "ATA") {
+    const assembleia = `${tituloAssembleia(n.secaoTitulo)} de ${n.secaoNumero}`;
+    if (!n.item) return `deliberação da ${assembleia}`;
+    return `deliberação do item ${n.item} da Ordem do Dia${n.itemTitulo ? ` (${n.itemTitulo})` : ""} da ${assembleia}`;
+  }
   if (n.documento === "ESTATUTO") {
     const partes = [`Artigo ${n.artigo}`];
     if (n.alinea) partes.push(`alínea "${n.alinea}"`);
@@ -32,6 +40,7 @@ export function citacaoCompleta(n: Referencia, termoSecao: TermoSecao = "tópico
 
 /** Forma curta para tabelas e filtros. Ex.: "RI II, item 8" / "ES art. 11, al. a". */
 export function citacaoCurta(n: Referencia): string {
+  if (n.documento === "ATA") return `${siglaAssembleia(n.secaoTitulo)} ${n.secaoNumero}${n.item ? `, item ${n.item}` : ""}`;
   if (n.documento === "ESTATUTO") {
     let s = `ES art. ${n.artigo}`;
     if (n.alinea) s += `, al. ${n.alinea}`;
@@ -45,6 +54,7 @@ export function citacaoCurta(n: Referencia): string {
 
 /** Rótulo do dispositivo isolado (sem documento). Ex.: "Item 8", "Subitem 1.2.7", "Artigo 11, alínea a". */
 export function rotuloDispositivo(n: Referencia): string {
+  if (n.documento === "ATA") return n.item ? `Item ${n.item} da Ordem do Dia` : "Deliberação";
   if (n.documento === "ESTATUTO") {
     let s = `Artigo ${n.artigo}`;
     if (n.alinea) s += `, alínea "${n.alinea}"`;
@@ -58,9 +68,37 @@ export function rotuloDispositivo(n: Referencia): string {
 }
 
 export function rotuloSecao(n: Pick<Norma, "documento" | "secaoNumero" | "secaoTitulo">): string {
+  if (n.documento === "ATA") return `Ata da ${tituloAssembleia(n.secaoTitulo)} de ${n.secaoNumero}`;
   return n.documento === "ESTATUTO"
     ? `Capítulo ${n.secaoNumero} – ${n.secaoTitulo}`
     : `${n.secaoNumero} – ${n.secaoTitulo}`;
+}
+
+/** "ASSEMBLEIA GERAL EXTRAORDINÁRIA" → "Assembleia Geral Extraordinária" */
+function tituloAssembleia(t: string): string {
+  return t
+    .toLowerCase()
+    .split(/\s+/)
+    .map((p) => (["de", "da", "do"].includes(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join(" ");
+}
+
+/** "ASSEMBLEIA GERAL EXTRAORDINÁRIA" → "AGE"; "ASSEMBLEIA GERAL ORDINÁRIA" → "AGO". */
+function siglaAssembleia(t: string): string {
+  const s = t.toUpperCase();
+  if (s.includes("EXTRAORDIN")) return "AGE";
+  if (s.includes("ORDIN")) return "AGO";
+  return "Ata";
+}
+
+/**
+ * Citação precedida do artigo ou da preposição corretos para o tipo de dispositivo:
+ * "o Item 8 …" / "a deliberação …"; "no Item 8 …" / "na deliberação …".
+ */
+export function citacaoComArtigo(n: Referencia, forma: "o" | "no", termoSecao: TermoSecao = "tópico"): string {
+  const feminino = n.documento === "ATA";
+  const artigo = forma === "o" ? (feminino ? "a" : "o") : feminino ? "na" : "no";
+  return `${artigo} ${citacaoCompleta(n, termoSecao)}`;
 }
 
 export function criarSnapshot(

@@ -155,6 +155,7 @@ export default function Historico() {
                 <option value="">Todos</option>
                 <option value="REGULAMENTO">{DOCUMENTO_NOME.REGULAMENTO}</option>
                 <option value="ESTATUTO">{DOCUMENTO_NOME.ESTATUTO}</option>
+                <option value="ATA">{DOCUMENTO_NOME.ATA}</option>
                 <option value="SEM">Sem fundamentação</option>
               </Selecao>
             </Campo>

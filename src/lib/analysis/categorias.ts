@@ -216,6 +216,15 @@ export const CATEGORIAS: CategoriaOcorrencia[] = [
     ],
   },
   {
+    // Deliberação da AGE de 26/06/2022 (Ata registrada).
+    nome: "Locação não residencial (Airbnb / temporada)",
+    termos: [
+      "airbnb", "air bnb", "booking", "temporada", "aluguel por temporada", "locacao por temporada", "aluga por temporada",
+      "alugando por temporada", "aluguel por dia", "aluga por dia", "alugando por dia", "diaria*", "hosped*",
+      "locacao nao residencial", "aluguel de curta", "curta temporada", "fim de semana alugado", "check in", "check-in",
+    ],
+  },
+  {
     nome: "Locação / cessão sem comunicação",
     termos: [
       "inquilino*", "locatari*", "locacao", "aluguel", "alugou", "alugado", "comodat*", "temporada",

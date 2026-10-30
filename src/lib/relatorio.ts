@@ -1,4 +1,4 @@
-import { citacaoCompleta } from "./citacao";
+import { citacaoComArtigo, citacaoCompleta } from "./citacao";
 import type { Configuracoes, FundamentacaoSnapshot, Genero, Ocorrencia, TermoSecao, Tratamento } from "./types";
 
 export const MESES = [
@@ -91,9 +91,9 @@ export function paragrafoPrincipal(o: DadosParagrafo, termoSecao: TermoSecao = "
   if (!o.fundamentacaoPrincipal) {
     return `Informo a ocorrência descrita acima, envolvendo ${quem}, a qual é encaminhada para análise da Administração para definição da fundamentação aplicável.`;
   }
-  let texto = `Informo que ${quem} descumpriu o ${citacaoCompleta(o.fundamentacaoPrincipal, termoSecao)}`;
+  let texto = `Informo que ${quem} descumpriu ${citacaoComArtigo(o.fundamentacaoPrincipal, "o", termoSecao)}`;
   if (o.fundamentacaoComplementar) {
-    texto += `, bem como o ${citacaoCompleta(o.fundamentacaoComplementar, termoSecao)}`;
+    texto += `, bem como ${citacaoComArtigo(o.fundamentacaoComplementar, "o", termoSecao)}`;
   }
   const complemento = normalizarComplemento(o.complemento);
   return complemento ? `${texto} ${complemento}.` : `${texto}, conforme ocorrência descrita acima.`;

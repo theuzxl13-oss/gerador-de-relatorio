@@ -70,7 +70,8 @@ test("migrações: versionadas, idempotentes e registradas", { skip: pular }, as
   await outro.contarUsuarios(); // segunda execução não reaplica nada
   await outro.encerrar();
   const { rows } = await sql.query("select versao from schema_migracoes order by versao");
-  assert.deepEqual(rows.map((r) => r.versao), [1, 2, 3]);
+  assert.deepEqual(rows.map((r) => r.versao), [1, 2, 3, 4]);
+  assert.ok((await repo.listarNormas()).some((n) => n.id === "ATA-2022-06-26-1"), "banco novo já vem com a ata");
   const idx = await sql.query("select 1 from pg_indexes where indexname = 'ocorrencias_protocolo_unico'");
   assert.equal(idx.rowCount, 1);
 });
@@ -283,4 +284,35 @@ test("consulta paginada: filtros, ordem, totais e resumos do SQL iguais aos da r
     (await repo.listarEmAcompanhamento(hoje)).map((o) => o.id).sort(),
     todas.filter((o) => emAcompanhamento(o, hoje)).map((o) => o.id).sort(),
   );
+});
+
+test("migração 4: banco em uso recebe a ata (restrição de documento ampliada) sem alterar normas editadas", { skip: pular }, async () => {
+  const admin = new Client({ connectionString: URL_ADMIN });
+  await admin.connect();
+  const banco3 = `${nomeBanco}_atas`;
+  await admin.query(`create database ${banco3}`);
+  const u = new URL(URL_ADMIN!);
+  u.pathname = `/${banco3}`;
+  const c = new Client({ connectionString: u.toString() });
+  await c.connect();
+  // Banco como o da versão anterior: restrição antiga e uma norma editada pela Administração.
+  await c.query(`create table normas (id text primary key, documento text not null check (documento in ('ESTATUTO', 'REGULAMENTO')),
+    dados jsonb not null, atualizado_em timestamptz not null default now())`);
+  await c.query("insert into normas (id, documento, dados) values ('RI-II-8', 'REGULAMENTO', $1)", [
+    { id: "RI-II-8", documento: "REGULAMENTO", secaoNumero: "II", secaoTitulo: "T", item: "8", texto: "TEXTO EDITADO", palavrasChave: [], categorias: [], aplicavelOcorrencias: true, ativo: true },
+  ]);
+  const r3 = new RepositorioPostgres(u.toString());
+  const normas = await r3.listarNormas();
+  assert.equal(normas.length, 2, "só a ata foi acrescentada (as demais normas não são recarregadas)");
+  assert.equal(normas.find((n) => n.id === "RI-II-8")?.texto, "TEXTO EDITADO");
+  assert.equal(normas.find((n) => n.id === "ATA-2022-06-26-1")?.documento, "ATA");
+  // Uma segunda inicialização não duplica nem reinsere a ata excluída.
+  await c.query("delete from normas where id = 'ATA-2022-06-26-1'");
+  await r3.encerrar();
+  const r4 = new RepositorioPostgres(u.toString());
+  assert.equal((await r4.listarNormas()).some((n) => n.id === "ATA-2022-06-26-1"), false, "excluída pela Administração, não volta sozinha");
+  await r4.encerrar();
+  await c.end();
+  await admin.query(`drop database ${banco3} with (force)`);
+  await admin.end();
 });

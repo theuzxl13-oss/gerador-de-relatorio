@@ -59,7 +59,7 @@ export function filtroDaUrl(p: URLSearchParams): { filtro: FiltroOcorrencias; pa
     dispositivo: curto(p.get("dispositivo")),
     de: de && DATA.test(de) ? de : undefined,
     ate: ate && DATA.test(ate) ? ate : undefined,
-    documento: documento === "REGULAMENTO" || documento === "ESTATUTO" || documento === "SEM" ? documento : undefined,
+    documento: documento === "REGULAMENTO" || documento === "ESTATUTO" || documento === "ATA" || documento === "SEM" ? documento : undefined,
     status: status && status in STATUS_LABEL ? (status as StatusOcorrencia) : undefined,
     pendentes: p.get("pendentes") === "1" || undefined,
   };

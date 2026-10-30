@@ -138,6 +138,7 @@ const CAT = {
   LAZER: "Uso irregular das áreas de lazer",
   LAGO: "Uso irregular dos lagos",
   CAMINHOES: "Entrada de caminhões / entregas em horário vedado",
+  AIRBNB: "Locação não residencial (Airbnb / temporada)",
 };
 
 /** Subitens do tópico VII cujo texto se aplica também às áreas comuns em geral. */
@@ -197,6 +198,13 @@ function pontuarNorma(norma: Norma, interp: Interpretacao, ctx: ContextoOcorrenc
   // ── Contexto: horário e dia da semana ──
   const min = minutos(ctx.horario);
   const ehRegulamento = norma.documento === "REGULAMENTO";
+
+  // Deliberação de Assembleia sobre locação não residencial (Airbnb): termos de plataforma/temporada
+  // são específicos dessa deliberação e não das regras gerais de locação (comunicação de inquilino).
+  if (norma.documento === "ATA" && norma.categorias.includes(CAT.AIRBNB) && detectadas.has(CAT.AIRBNB)) {
+    s += 4;
+    motivos.push("Termo específico de locação por plataforma/temporada (deliberação de Assembleia)");
+  }
 
   if (ehRegulamento && norma.secaoNumero === "II" && norma.item === "8" && detectadas.has(CAT.SOSSEGO) && interp.noturno) {
     s += 4;
@@ -292,14 +300,19 @@ export async function analisarOcorrencia(
         c.confianca !== "BAIXA" &&
         c.categoriasEmComum.some((cat) => principal.categoriasEmComum.includes(cat)),
     );
-    if (!complementar && principal.norma.documento === "REGULAMENTO" && contexto.tratamento && TRATAMENTOS_ASSOCIADO.includes(contexto.tratamento)) {
-      const dever = normas.find((n) => n.id === "ES-11-a" && n.ativo);
+    if (!complementar && principal.norma.documento !== "ESTATUTO" && contexto.tratamento && TRATAMENTOS_ASSOCIADO.includes(contexto.tratamento)) {
+      // Dever estatutário: cumprir os regulamentos (alínea a) ou as deliberações de Assembleia (alínea b).
+      const dever = normas.find((n) => n.id === (principal.norma.documento === "ATA" ? "ES-11-b" : "ES-11-a") && n.ativo);
       if (dever) {
         complementarSugerida = {
           norma: dever,
           pontuacao: 0,
           confianca: "MEDIA",
-          motivos: ["Dever estatutário dos associados de cumprir o Regulamento Interno (sugestão opcional)"],
+          motivos: [
+            principal.norma.documento === "ATA"
+              ? "Dever estatutário dos associados de acatar as deliberações das Assembléias Gerais (sugestão opcional)"
+              : "Dever estatutário dos associados de cumprir o Regulamento Interno (sugestão opcional)",
+          ],
           categoriasEmComum: [],
         };
       }

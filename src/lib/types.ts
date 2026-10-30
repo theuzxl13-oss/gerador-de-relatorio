@@ -7,12 +7,15 @@
  * as telas.
  */
 
-export type DocumentoTipo = "ESTATUTO" | "REGULAMENTO";
+export type DocumentoTipo = "ESTATUTO" | "REGULAMENTO" | "ATA";
 
 export const DOCUMENTO_NOME: Record<DocumentoTipo, string> = {
   ESTATUTO: "Estatuto Social",
   REGULAMENTO: "Regulamento Interno",
+  ATA: "Atas de Assembleia",
 };
+
+export const DOCUMENTOS: DocumentoTipo[] = ["REGULAMENTO", "ESTATUTO", "ATA"];
 
 /**
  * Uma norma individual extraída do Estatuto Social ou do Regulamento Interno.

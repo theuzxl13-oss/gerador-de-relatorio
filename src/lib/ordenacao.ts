@@ -26,8 +26,16 @@ function compararNumeros(a = "", b = ""): number {
 }
 
 /** Ordena as normas na ordem em que aparecem no documento. */
+const ORDEM_DOCUMENTO: Record<Norma["documento"], number> = { REGULAMENTO: 0, ESTATUTO: 1, ATA: 2 };
+
+/** "26/06/2022" → "20220626" (atas em ordem cronológica). */
+const dataOrdenavel = (d: string) => d.split("/").reverse().join("");
+
 export function compararNormas(a: Norma, b: Norma): number {
-  if (a.documento !== b.documento) return a.documento === "REGULAMENTO" ? -1 : 1;
+  if (a.documento !== b.documento) return ORDEM_DOCUMENTO[a.documento] - ORDEM_DOCUMENTO[b.documento];
+  if (a.documento === "ATA") {
+    return dataOrdenavel(a.secaoNumero).localeCompare(dataOrdenavel(b.secaoNumero)) || compararNumeros(a.item, b.item);
+  }
   const s = romanoParaNumero(a.secaoNumero) - romanoParaNumero(b.secaoNumero);
   if (s) return s;
   if (a.documento === "ESTATUTO") {
